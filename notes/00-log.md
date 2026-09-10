@@ -97,3 +97,10 @@ F1@2 m 0.703. Match radius sensitivity (run 1, 7 years, edge 24 px ignored):
 1 m 0.51 · 1.5 m 0.63 · 2 m 0.69 · 3 m 0.73 · 4 m 0.75 · 6 m 0.77. Median matched distance 0.7 m.
 Qualitative: several "errors" are a miss + false positive pair 3–4 m apart (label offset / pole
 replaced nearby); the rest are subtle poles under canopy and in wide medians, plus block-edge FPs.
+
+### Error analysis, run 1 (val, thresh 0.2, 2 m radius; 1,093 TP / 470 FN / 484 FP)
+Recall by SCL pole HEIGHT: <20 ft **0.29** (n=147) · 20–34 ft 0.42 (n=134) · 35–49 ft 0.74 (n=702) ·
+≥50 ft **0.82** (n=580). HAS_STREETLIGHT yes 0.73 vs no 0.60. FACILITYTYPE S (n=87) 0.17.
+→ Misses are dominated by short poles (small/no shadow, small top). 44 of 484 FPs are within 24 px of
+the block edge (an artifact the inference script already crops away); only 20 FPs are within 4 m of an
+OSM pole-ish node, so "unlabelled but mapped" poles do not explain the FPs.
