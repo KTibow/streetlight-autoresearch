@@ -163,3 +163,14 @@ Runs 3–4 scored with all 7 years at inference (edge 24 px ignored):
 | Kirkland | 0.130 | 0.750 | 0.222 | 4 val blocks only |
 v2 dataset: 2,921 blocks (2,436 train / 485 val), 10,178 train points incl. 257 pseudo-labelled utility
 poles in the city sets. Two runs: `v2_r34` (ResNet-34) and `v2_cnxt` (ConvNeXt-Tiny), 60 epochs each.
+
+### v2_r34 (ResNet-34 on v2 data, 60 ep) — per-set val, 7 years, 2 m
+| set | P | R | F1 | Δ vs v1-era refined |
+|---|---|---|---|---|
+| Seattle (SCL) | 0.693 | 0.730 | 0.711 | −0.005 |
+| Redmond | 0.628 | 0.540 | 0.581 | **R +0.12** |
+| Renton | 0.451 | 0.750 | 0.564 | same |
+| Federal Way | 0.056 | 0.074 | 0.064 | same (labels unusable) |
+| Kirkland (4 blocks) | 0.125 | 0.750 | 0.214 | same |
+All-val threshold sweep @2 m: best F1 0.673 at thr 0.25 (P 0.68 / R 0.67).
+Adding ~430 city blocks taught Redmond-style light standards without hurting Seattle.
