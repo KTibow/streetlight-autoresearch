@@ -73,7 +73,7 @@ def focal_heatmap_loss(logits, target, alpha=2.0, beta=4.0):
 
 def decode_peaks(logits, thresh=0.3, nms_k=5):
     """logits (B,1,h,w) -> list of (x, y, score) at heatmap resolution."""
-    p = torch.sigmoid(logits)
+    p = torch.sigmoid(logits).detach()
     mx = F.max_pool2d(p, nms_k, stride=1, padding=nms_k // 2)
     keep = (p == mx) & (p > thresh)
     out = []
