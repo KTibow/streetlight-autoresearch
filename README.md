@@ -19,7 +19,7 @@ Research log: `notes/00-log.md`. Learnings: `notes/01-learnings.md`. Weights: `w
 ```
 pip install torch timm pillow numpy scipy requests
 cd src
-python infer.py --ckpt ../weights/<weights>.pt --bbox -122.35,47.65,-122.33,47.66 \
+python infer.py --ckpt ../weights/<weights>.pt --bbox=-122.35,47.65,-122.33,47.66 \
     --years 2025,2023,2021,2019,2017,2015,2013 --out poles.geojson
 ```
 Tiles are fetched from King County on the fly (cached under `~/tile_cache`). Output points carry a

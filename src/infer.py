@@ -1,7 +1,7 @@
 """Run the pole detector over an arbitrary King County area and write GeoJSON.
 
-python infer.py --ckpt runs/exp/best.pt --bbox -122.35,47.65,-122.33,47.66 --years 2025,2023,2021 --out poles.geojson
-bbox = lon_min,lat_min,lon_max,lat_max (EPSG:4326). Tiles are fetched (and cached) from King County.
+python infer.py --ckpt runs/exp/best.pt --bbox=-122.35,47.65,-122.33,47.66 --years 2025,2023,2021 --out poles.geojson
+bbox = lon_min,lat_min,lon_max,lat_max (EPSG:4326). Use the --bbox=... form (the value starts with "-"). Tiles are fetched (and cached) from King County.
 """
 import argparse, json, math, sys
 import numpy as np, torch, torch.nn.functional as F
@@ -20,7 +20,13 @@ def main():
     ap.add_argument("--thresh", type=float, default=None)
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--workers", type=int, default=16)
-    args = ap.parse_args()
+    import sys
+    argv = sys.argv[1:]
+    for i, a in enumerate(argv):  # tolerate "--bbox -122,..." (argparse would read the value as an option)
+        if a == "--bbox" and i + 1 < len(argv):
+            argv[i:i + 2] = [f"--bbox={argv[i + 1]}"]
+            break
+    args = ap.parse_args(argv)
     ck = torch.load(args.ckpt, map_location="cpu")
     model = PoleNet(ck["args"]["backbone"], pretrained=False)
     model.load_state_dict(ck["model"]); model.to(args.device).eval()
