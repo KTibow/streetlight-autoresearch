@@ -28,6 +28,22 @@ Weights in `weights/`: `polenet_r34_multiyear_v1.pt` (Seattle-only, F1 0.688), `
 | training / evaluation | `src/train.py`, `src/eval_radii.py`, `src/viz_pred.py` |
 | inference over any bbox → GeoJSON | `src/infer.py` |
 
+## Live heat-map overlay for iD / JOSM (`serve_heatmap.py`)
+One file, PEP 723 metadata, so with [uv](https://docs.astral.sh/uv/) it is just:
+```
+uv run serve_heatmap.py            # CPU; add --device cuda / --device mps if you have it
+```
+then in iD open Background settings → Custom and paste `http://localhost:8765/{zoom}/{x}/{y}.png`
+(JOSM: Imagery preferences → add TMS with the same template). The server fetches King County imagery
+for the requested area (default years 2025,2023,2021,2019), runs the detector once per 512 px block
+(~51 m) with a 64 px margin, caches the result in memory and under `~/.cache/streetlight-heatmap`, and
+cuts tiles from the cache. Heat is saturated at p=0.5 (`--saturate`) because the net rarely exceeds
+0.6; white rings mark peak-picked detections ≥ the checkpoint's threshold (`--thresh`).
+Cost: a laptop CPU does roughly one block per 3 s with ConvNeXt-Tiny on 4 years, about 1.5 s with
+`--ckpt weights/polenet_r34_multiyear_v2.pt`; a GPU does tens per second. Tiles below `--min-zoom`
+(default 18) are served empty so a zoomed-out view cannot trigger thousands of model calls.
+`/peaks.geojson?bbox=lon0,lat0,lon1,lat1` returns the cached detections as GeoJSON, `/status` shows counters.
+
 ## Run the detector on an area
 ```
 pip install torch timm pillow numpy scipy requests

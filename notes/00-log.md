@@ -194,3 +194,10 @@ Not done / next: (1) audit high-confidence detections against street-level image
 true precision; (2) a leaf-off epoch or LiDAR-derived pole candidates for evergreen areas; (3) train
 on the full 20k candidate SCL blocks (only 2.4k used) plus more small-light examples; (4) run the
 detector county-wide and diff against OSM.
+
+### Heat-map tile server (`serve_heatmap.py`, PEP 723)
+XYZ server for iD/JOSM: per 512 px z20 block (+64 px margin) it fetches the chosen years, registers
+them, runs the detector once, caches (memory + `~/.cache/streetlight-heatmap`), and cuts tiles from
+the cache; heat saturates at p=0.5, rings at peaks ≥ threshold. Measured on this 4-core sandbox, 3
+years: ConvNeXt-Tiny 3.1 s/block, ResNet-34 1.1 s/block of model time; cached tiles 11 ms.
+Example composite: `results/examples/heatmap_tile_z18_wallingford_composite.png`.
