@@ -123,3 +123,15 @@ predictions as positives on TRAIN only), retrain, and keep scoring against the u
   val untouched): F1 0.666 at epoch 5 (run 1: 0.637), 0.696 by epoch 13.
 - Generalization set: 150 Redmond blocks (city "Street Lights" layer, PSE-owned poles, Eastside),
   all-val, built and registered the same way; scoring run 1 on it now.
+
+### Generalization to Redmond (run 1, 150 blocks, city "Street Lights" layer; 3 m radius)
+Overall recall 0.39 (2 m: R 0.35, P 0.58; precision is not meaningful here because the layer omits
+unlit utility poles). By Redmond attributes:
+- d_PoleCategory: UP (utility pole with light) **0.81** · LP (light pole) 0.43 · SP 0.33 · PD (pedestrian
+  light) 0.04 · DLP (decorative) 0.00
+- HEIGHT: <20 ft 0.11 · 20–34 ft 0.54 · ≥35 ft 0.44 (the ≥35 group is mostly steel light standards)
+- Ownership: PSE 0.53 · city 0.31 · WSDOT 0.09
+→ The detector generalizes across the county for the class it was trained on (wood distribution poles,
+which SCL's layer is 90%+ of) and never learned small steel/concrete light standards. This is a label
+coverage gap, not an imagery limit. Fix in progress: add Redmond/Renton/Federal Way/Kirkland streetlight
+layers to training (spatial val split), filling in their unlabelled utility poles with run-1 detections.
