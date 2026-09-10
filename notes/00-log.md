@@ -43,3 +43,19 @@ sandbox container (4 cores, 15 GB RAM), rent the GPU only for training.
 - Verdict: not a primary training label source (needs dedupe, positional error ≈ the pole spacing of
   interest, incomplete off the driven network). Possible use: weak labels / a sanity check outside
   cities with authoritative pole datasets.
+
+### Label scout results (verified)
+Primary: **Seattle City Light poles** (`Seattle_City_Light_Poles_PROD/FeatureServer/1`, 99,114 points,
+Seattle + Shoreline/Burien/Tukwila; fields FACILITYTYPE O/S/X, HEIGHT, HAS_STREETLIGHT 75% yes).
+Overlay check on 2023 imagery (Wallingford): points sit on the pole bases where the wires converge, i.e.
+no visible label→image offset at this site/year. Also pulled: Redmond (5.3k, rich attrs), Renton (5k),
+Federal Way (4.5k), Kirkland (2.2k), Shoreline SCL subset (5.9k), KC traffic poles (1.9k).
+OSM (Overpass, private.coffee mirror): ~52k pole-ish nodes in the KC bbox; Geofabrik WA extract only over
+plain HTTP through this proxy. WSDOT: nothing public. PSE: nothing public → the Eastside and
+unincorporated KC have no authoritative ground truth except OSM.
+
+### Dataset v1 (building)
+- Training area derived from SCL label density: 4×4-block (~410 m) cells with ≥12 SCL points and all
+  4 neighbours labelled → 1,286 cells, 20,576 candidate blocks. Sampled 2,100 blocks with poles + 286
+  empty; spatial split by cell → 2,003 train / 383 val.
+- Blocks are 1024 px at z20 (~103 m ground), 7 years (2013–2025), JPEG q92.

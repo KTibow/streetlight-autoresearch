@@ -17,7 +17,8 @@ import tiles
 
 
 def load_points(path):
-    gj = json.load(open(path))
+    import gzip
+    gj = json.load(gzip.open(path, "rt") if path.endswith(".gz") else open(path))
     pts = []
     for f in gj["features"]:
         g = f["geometry"]
@@ -31,7 +32,9 @@ def load_points(path):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--points", required=True)
-    ap.add_argument("--aoi", required=True)
+    ap.add_argument("--aoi", default=None, help="GeoJSON polygons where labels are complete; if omitted, derived from label density")
+    ap.add_argument("--cover_cells", type=int, default=4, help="coverage cell = this many blocks per side")
+    ap.add_argument("--cover_min", type=int, default=12, help="min points per coverage cell to count as labelled area")
     ap.add_argument("--out", required=True)
     ap.add_argument("--years", default="2013,2015,2017,2019,2021,2023,2025")
     ap.add_argument("--size", type=int, default=1024)
@@ -49,10 +52,10 @@ def main():
     S = args.size
     dx_m, dy_m = [float(v) for v in args.offset_m.split(",")]
 
-    aoi = json.load(open(args.aoi))
-    polys = [shape(f["geometry"]) for f in aoi["features"]] if "features" in aoi else [shape(aoi)]
-    pts = load_points(args.points)
-    print(f"{len(pts)} points, {len(polys)} aoi polys", flush=True)
+    pts = []
+    for pth in args.points.split(","):
+        pts += load_points(pth)
+    print(f"{len(pts)} points", flush=True)
 
     # project points to z20 global pixels (with metre offset applied in mercator, scaled by 1/cos(lat))
     ppx = []
@@ -64,8 +67,26 @@ def main():
         ppx.append((px, py, lon, lat, props))
     P = np.array([(p[0], p[1]) for p in ppx])
 
-    # candidate blocks: grid over aoi bbox in pixel space
+    # candidate blocks
     blocks = []
+    if args.aoi is None:
+        C = S * args.cover_cells
+        cells = {}
+        for px, py in P:
+            c = (int(px) // C, int(py) // C)
+            cells[c] = cells.get(c, 0) + 1
+        good = {c for c, n in cells.items() if n >= args.cover_min}
+        # require the 4-neighbourhood to be labelled too (avoid edge-of-coverage blocks)
+        good = {c for c in good if all(((c[0] + dx, c[1] + dy) in good) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))}
+        for (cx, cy) in good:
+            for j in range(args.cover_cells):
+                for i in range(args.cover_cells):
+                    blocks.append((cx * C + i * S, cy * C + j * S))
+        polys = []
+        print(f"{len(cells)} cells with points, {len(good)} labelled cells", flush=True)
+    else:
+        aoi = json.load(open(args.aoi))
+        polys = [shape(f["geometry"]) for f in aoi["features"]] if "features" in aoi else [shape(aoi)]
     for poly in polys:
         minx, miny, maxx, maxy = poly.bounds
         x0, y0 = tiles.merc_to_pixel(*tiles.lonlat_to_merc(minx, maxy), args.z)
@@ -80,7 +101,7 @@ def main():
                 if poly.contains(b):  # only fully-inside blocks: labels complete
                     blocks.append((bx, by))
     blocks = sorted(set(blocks))
-    print(f"{len(blocks)} candidate blocks fully inside aoi", flush=True)
+    print(f"{len(blocks)} candidate blocks", flush=True)
 
     # assign points to blocks
     recs = []
