@@ -84,3 +84,16 @@ the index and applied at load time. Dataset shipped to the H100 node as a 5.5 GB
 ### Run 1: `multi_r34`
 ResNet-34 shared encoder, up to 4 of 7 years per sample (year dropout 0.3), 512 px crops, bs 16,
 AdamW 3e-4 one-cycle, 30 epochs, focal heatmap loss at stride 4 (sigma 2 = 0.8 m), match radius 20 px (2 m).
+
+### Results, runs 1–2 (30 epochs each, val = 383 spatially held-out blocks, 1,563 SCL poles)
+| run | years/sample | F1@2 m | P | R | best thresh |
+|---|---|---|---|---|---|
+| multi_r34 | up to 4 of 7 | **0.688** | 0.680 | 0.695 | 0.20 |
+| single_r34 | 1 | 0.603 | 0.711 | 0.523 | 0.25 |
+
+Multi-year is worth +0.085 F1, almost all of it recall (0.52 → 0.70): a pole invisible in one year
+(canopy, cars, shadow of a building) is visible in another. Inference with all 7 years instead of 4:
+F1@2 m 0.703. Match radius sensitivity (run 1, 7 years, edge 24 px ignored):
+1 m 0.51 · 1.5 m 0.63 · 2 m 0.69 · 3 m 0.73 · 4 m 0.75 · 6 m 0.77. Median matched distance 0.7 m.
+Qualitative: several "errors" are a miss + false positive pair 3–4 m apart (label offset / pole
+replaced nearby); the rest are subtle poles under canopy and in wide medians, plus block-edge FPs.
