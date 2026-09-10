@@ -41,9 +41,9 @@ def gaussian_heatmap(points, h, w, sigma):
 
 class BlockDataset(Dataset):
     """Blocks of size S (default 1024) with per-year JPEGs; train = random crops, val = whole block."""
-    def __init__(self, root, split, years, train, crop=512, stride=4, sigma_px=2.0, max_years=None, year_dropout=0.0, min_years=1):
+    def __init__(self, root, split, years, train, crop=512, stride=4, sigma_px=2.0, max_years=None, year_dropout=0.0, min_years=1, index="index.json"):
         self.root = root
-        allitems = json.load(open(os.path.join(root, "index.json")))
+        allitems = json.load(open(os.path.join(root, index)))
         self.items = [it for it in allitems if it["split"] == split and len([y for y in years if y in it["years"]]) >= min_years]
         self.years = years
         self.train = train
@@ -169,12 +169,13 @@ def main():
     ap.add_argument("--eval_every", type=int, default=1)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="cuda")
+    ap.add_argument("--index", default="index.json", help="index file for the TRAIN split (val always uses index.json)")
     args = ap.parse_args()
     torch.manual_seed(args.seed); random.seed(args.seed); np.random.seed(args.seed)
     os.makedirs(args.out, exist_ok=True)
     years = [int(y) for y in args.years.split(",")]
     device = args.device
-    tr = BlockDataset(args.data, "train", years, True, crop=args.crop, sigma_px=args.sigma, year_dropout=args.year_dropout, max_years=args.max_years)
+    tr = BlockDataset(args.data, "train", years, True, crop=args.crop, sigma_px=args.sigma, year_dropout=args.year_dropout, max_years=args.max_years, index=args.index)
     va = BlockDataset(args.data, "val", years, False, sigma_px=args.sigma, max_years=args.max_years)
     tl = DataLoader(tr, args.bs, shuffle=True, num_workers=args.workers, drop_last=True, pin_memory=True, persistent_workers=True)
     vl = DataLoader(va, args.val_bs, shuffle=False, num_workers=args.workers, pin_memory=True)
