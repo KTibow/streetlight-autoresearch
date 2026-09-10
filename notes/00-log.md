@@ -59,3 +59,19 @@ unincorporated KC have no authoritative ground truth except OSM.
   4 neighbours labelled → 1,286 cells, 20,576 candidate blocks. Sampled 2,100 blocks with poles + 286
   empty; spatial split by cell → 2,003 train / 383 val.
 - Blocks are 1024 px at z20 (~103 m ground), 7 years (2013–2025), JPEG q92.
+
+### Inter-year registration (measured on 300 blocks, edge cross-correlation vs 2023)
+| year | median (dx,dy) px | within 6 px | >10 px |
+|---|---|---|---|
+| 2013 | (-3, +4) | 48% | 21% |
+| 2015 | (-2, +3) | 76% | 11% |
+| 2017 | (-2, +3) | 71% | 11% |
+| 2019 | (0, 0) | 85% | 10% |
+| 2021 | (0, 0) | 84% | 8% |
+| 2025 | (0, 0) | 77% | 13% |
+
+1 px ≈ 0.10 m ground. The Pictometry-era years (2013–2017) are shifted ~0.3–0.4 m relative to the
+EagleView years, with a wider per-block spread in 2013. Some ">10 px" cases are correlation failures
+(trees, redevelopment) rather than true offsets. Fix: `src/register_years.py` stores per-block per-year
+integer shifts (clamped to ±16 px, dropped when the correlation peak is not distinct) in the index and
+the loader translates each year to the 2023 grid. Labels themselves sit on the recent imagery.

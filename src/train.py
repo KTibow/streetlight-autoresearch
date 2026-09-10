@@ -13,6 +13,14 @@ from torch.utils.data import Dataset, DataLoader
 from model import PoleNet, focal_heatmap_loss, decode_peaks
 
 
+def translate(img, dx, dy):
+    """Move image content by (dx, dy) pixels (positive = right/down), edge-padded."""
+    H, W = img.shape[:2]
+    pad = max(abs(dx), abs(dy))
+    p = np.pad(img, ((pad, pad), (pad, pad), (0, 0)), mode="edge")
+    return np.ascontiguousarray(p[pad - dy:pad - dy + H, pad - dx:pad - dx + W])
+
+
 def gaussian_heatmap(points, h, w, sigma):
     hm = np.zeros((h, w), np.float32)
     if len(points) == 0:
@@ -50,7 +58,11 @@ class BlockDataset(Dataset):
 
     def load(self, it, year):
         p = os.path.join(self.root, "blocks", f"{it['id']}_{year}.jpg")
-        return np.asarray(Image.open(p).convert("RGB"))
+        img = np.asarray(Image.open(p).convert("RGB"))
+        sh = it.get("shifts", {}).get(str(year))
+        if sh and (sh[0] or sh[1]):
+            img = translate(img, sh[0], sh[1])
+        return img
 
     def __getitem__(self, i):
         it = self.items[i]
