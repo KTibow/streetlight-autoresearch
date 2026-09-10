@@ -1,14 +1,18 @@
 # /// script
 # requires-python = ">=3.10"
 # dependencies = [
-#   "torch>=2.2",
-#   "torchvision>=0.17",
+#   "torch==2.14.*",
+#   "torchvision==0.29.*",
 #   "timm>=1.0",
 #   "pillow>=10",
 #   "numpy>=1.26",
 #   "requests>=2.31",
 # ]
 # [tool.uv.sources]
+# # torch and torchvision must be a matched pair from the SAME index (timm imports torchvision, and a
+# # mismatch fails at import with "operator torchvision::nms does not exist"). Exact versions are
+# # pinned so every platform resolves the same pair: CPU wheels from the PyTorch index on
+# # Linux/Windows (x86_64 and aarch64), PyPI on macOS. For CUDA change the url to e.g. .../whl/cu126.
 # torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
 # torchvision = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
 # [[tool.uv.index]]
@@ -21,10 +25,9 @@
     uv run serve_heatmap.py                      # uses weights/polenet_cnxt_multiyear_v2.pt
     uv run serve_heatmap.py --years 2025,2023,2021,2019,2017,2015,2013 --device cuda
 
-torch and torchvision MUST come from the same index at matching versions (timm imports torchvision;
-a mismatch fails with "operator torchvision::nms does not exist"). The header pins both to the
-PyTorch CPU index on Linux/Windows and to PyPI on macOS. For a CUDA build, change the index url to
-e.g. https://download.pytorch.org/whl/cu126 (both packages).
+If startup fails with "operator torchvision::nms does not exist", the environment holds a torchvision
+that does not match its torch (typically a stale uv script environment from an earlier header).
+Rebuild it once:  rm -rf ~/.cache/uv/environments-v2/serve-heatmap-*   then run again.
 
 Then in iD: Background settings -> "Custom" -> paste
 
