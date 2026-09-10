@@ -30,3 +30,16 @@ sandbox container (4 cores, 15 GB RAM), rent the GPU only for training.
 - No rate limits seen; 40 concurrent tile requests fine. Tile fetcher: `src/tiles.py`.
 - Phase correlation between 2021/2023/2025 blocks at one site: 0–1 px relative offset. Years are well
   co-registered relative to each other (the user's ~(-2,+1) m offset is labels→imagery, to be estimated).
+
+### Mapillary scout results (verified)
+- Graph `map_features` bbox search silently truncates (a 1 km bbox returned 1.8k while the vector tile
+  holds 97k) and has no pagination; only the z14 vector tiles
+  (`tiles.mapillary.com/maps/vtp/mly_map_feature_point/2/14/{x}/{y}`) are complete. Layer `point`,
+  props `id, value, first_seen_at, last_seen_at`.
+- Classes: `object--street-light`, `object--support--utility-pole`, `object--support--pole`.
+  County estimate 0.4–1M features, but **massively duplicated** (downtown: 62k street-light features in
+  14k distinct 10 m cells; one cell had 1,852) and positions are off by "a few metres" (Mapillary's
+  own words), worse in downtown canyons.
+- Verdict: not a primary training label source (needs dedupe, positional error ≈ the pole spacing of
+  interest, incomplete off the driven network). Possible use: weak labels / a sanity check outside
+  cities with authoritative pole datasets.
