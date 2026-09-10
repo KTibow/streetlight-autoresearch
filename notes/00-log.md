@@ -22,3 +22,11 @@ sandbox container (4 cores, 15 GB RAM), rent the GPU only for training.
   as a baseline to measure what the multi-year stack buys.
 - Model: small UNet-style keypoint/heatmap net (pretrained ResNet/ConvNeXt encoder), peak-picking
   → point detections. Metric: precision/recall at a distance threshold (e.g. 3 m).
+
+### Ortho scout results (verified)
+- KC aerials are cached Web Mercator XYZ tiles: `.../BaseMaps/KingCo_Aerial_{year}/MapServer/tile/{z}/{y}/{x}`.
+- z20 (≈0.149 m nominal, ≈0.10 m ground at 47.6°) for 2013, 2015, 2017, 2019, 2021, 2023, 2025; z19 for 2007/2009/2012.
+  `export` at finer than z20 just upsamples the cache, so z20 tiles are the true ceiling.
+- No rate limits seen; 40 concurrent tile requests fine. Tile fetcher: `src/tiles.py`.
+- Phase correlation between 2021/2023/2025 blocks at one site: 0–1 px relative offset. Years are well
+  co-registered relative to each other (the user's ~(-2,+1) m offset is labels→imagery, to be estimated).
