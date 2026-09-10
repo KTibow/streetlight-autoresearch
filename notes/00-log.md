@@ -174,3 +174,7 @@ poles in the city sets. Two runs: `v2_r34` (ResNet-34) and `v2_cnxt` (ConvNeXt-T
 | Kirkland (4 blocks) | 0.125 | 0.750 | 0.214 | same |
 All-val threshold sweep @2 m: best F1 0.673 at thr 0.25 (P 0.68 / R 0.67).
 Adding ~430 city blocks taught Redmond-style light standards without hurting Seattle.
+
+### End-to-end inference check (repo weights `polenet_r34_multiyear_v2.pt`, CPU, 3 years)
+`infer.py` on a 220 m square of Wallingford: 23 detections (21 ≥ 0.5) vs 23 SCL labels in the box;
+21 detections within 3 m of a label and 21 labels within 3 m of a detection.
