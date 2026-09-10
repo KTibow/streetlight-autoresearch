@@ -152,3 +152,14 @@ Runs 3–4 scored with all 7 years at inference (edge 24 px ignored):
 | multi_r34 (run 1) | 0.703 | 0.73 | 0.438 | 0.39 |
 | multi_r34_long | 0.709 | 0.757 | 0.504 | 0.47 |
 | multi_r34_refined | **0.716** | **0.767** | 0.503 | 0.45 |
+
+### v1-era model (multi_r34_refined) on the v2 per-set val blocks (7 years, 2 m)
+| set | P | R | F1 | note |
+|---|---|---|---|---|
+| Seattle (SCL) | 0.708 | 0.725 | 0.716 | |
+| Redmond | 0.667 | 0.420 | 0.515 | |
+| Renton | 0.450 | 0.735 | 0.559 | layer omits unlit utility poles → low P is expected |
+| Federal Way | 0.057 | 0.074 | 0.065 | legacy layer: corner signal/light masts, coarse positions (median match 1.6 m) |
+| Kirkland | 0.130 | 0.750 | 0.222 | 4 val blocks only |
+v2 dataset: 2,921 blocks (2,436 train / 485 val), 10,178 train points incl. 257 pseudo-labelled utility
+poles in the city sets. Two runs: `v2_r34` (ResNet-34) and `v2_cnxt` (ConvNeXt-Tiny), 60 epochs each.
