@@ -2,6 +2,7 @@
 # requires-python = ">=3.10"
 # dependencies = [
 #   "torch>=2.2",
+#   "torchvision>=0.17",
 #   "timm>=1.0",
 #   "pillow>=10",
 #   "numpy>=1.26",
@@ -9,6 +10,7 @@
 # ]
 # [tool.uv.sources]
 # torch = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
+# torchvision = [{ index = "pytorch-cpu", marker = "sys_platform != 'darwin'" }]
 # [[tool.uv.index]]
 # name = "pytorch-cpu"
 # url = "https://download.pytorch.org/whl/cpu"
@@ -18,6 +20,11 @@
 
     uv run serve_heatmap.py                      # uses weights/polenet_cnxt_multiyear_v2.pt
     uv run serve_heatmap.py --years 2025,2023,2021,2019,2017,2015,2013 --device cuda
+
+torch and torchvision MUST come from the same index at matching versions (timm imports torchvision;
+a mismatch fails with "operator torchvision::nms does not exist"). The header pins both to the
+PyTorch CPU index on Linux/Windows and to PyPI on macOS. For a CUDA build, change the index url to
+e.g. https://download.pytorch.org/whl/cu126 (both packages).
 
 Then in iD: Background settings -> "Custom" -> paste
 
