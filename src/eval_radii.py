@@ -13,12 +13,15 @@ def main():
     ap.add_argument("--thresh", type=float, default=None); ap.add_argument("--split", default="val")
     ap.add_argument("--radii", default="10,15,20,30,40,60"); ap.add_argument("--device", default="cuda")
     ap.add_argument("--edge", type=int, default=0, help="ignore preds and labels within this many px of the block edge")
-    ap.add_argument("--out", default=None)
+    ap.add_argument("--out", default=None); ap.add_argument("--only_set", default=None, help="restrict to items whose 'set' field matches")
     a = ap.parse_args()
     ck = torch.load(a.ckpt, map_location="cpu")
     model = PoleNet(ck["args"]["backbone"], pretrained=False); model.load_state_dict(ck["model"]); model.to(a.device).eval()
     years = [int(y) for y in a.years.split(",")]
     ds = BlockDataset(a.data, a.split, years, False, max_years=len(years))
+    if a.only_set:
+        ds.items = [it for it in ds.items if it.get("set") == a.only_set]
+    print(len(ds.items), "blocks")
     dl = DataLoader(ds, 8, num_workers=8)
     threshes = [a.thresh] if a.thresh else [0.1, 0.15, 0.2, 0.25, 0.3, 0.4]
     radii = [float(r) for r in a.radii.split(",")]

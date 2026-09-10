@@ -29,7 +29,10 @@ class YearFusion(nn.Module):
 class PoleNet(nn.Module):
     def __init__(self, backbone="resnet34", pretrained=True, fpn_ch=96):
         super().__init__()
-        self.enc = timm.create_model(backbone, pretrained=pretrained, features_only=True, out_indices=(1, 2, 3, 4))
+        probe = timm.create_model(backbone, pretrained=False, features_only=True)
+        idx = tuple(i for i, r in enumerate(probe.feature_info.reduction()) if r in (4, 8, 16, 32))
+        del probe
+        self.enc = timm.create_model(backbone, pretrained=pretrained, features_only=True, out_indices=idx)
         chs = self.enc.feature_info.channels()  # strides 4,8,16,32
         self.fuse = nn.ModuleList([YearFusion(c) for c in chs])
         self.lat = nn.ModuleList([nn.Conv2d(c, fpn_ch, 1) for c in chs])
