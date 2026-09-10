@@ -145,3 +145,10 @@ Label refinement helps a little and converges faster; the ceiling against the ra
 SCL (refined train labels) + Redmond/Renton/Federal Way(/Kirkland) streetlight sets (150 blocks each,
 30% val by cell) with pseudo-labels for their unlabelled utility poles (model score ≥0.5, ≥5 m from any
 city label). Goal: teach the detector short steel/concrete light standards without unlearning poles.
+
+Runs 3–4 scored with all 7 years at inference (edge 24 px ignored):
+| model | SCL val F1@2 m | @3 m | Redmond F1@2 m | Redmond R@3 m |
+|---|---|---|---|---|
+| multi_r34 (run 1) | 0.703 | 0.73 | 0.438 | 0.39 |
+| multi_r34_long | 0.709 | 0.757 | 0.504 | 0.47 |
+| multi_r34_refined | **0.716** | **0.767** | 0.503 | 0.45 |
