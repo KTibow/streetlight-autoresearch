@@ -1,8 +1,8 @@
 """Train the pole heatmap detector.
 
 Dataset layout (built by src/build_dataset.py):
-  data/<split>/index.json   list of samples: {id, years:[..], points:[[px,py],..], meta...}
-  data/<split>/chips/<id>_<year>.png   RGB chip, all years share the footprint/pixel grid
+  data/index.json            list of blocks: {id, size, years:[..], points:[[px,py],..], split}
+  data/blocks/<id>_<year>.jpg  RGB block, all years share the footprint/pixel grid (built by build_dataset.py)
 
 Usage: python train.py --data data --out runs/exp1 --years 2021,2019,2017 --epochs 20
 """
@@ -31,40 +31,50 @@ def gaussian_heatmap(points, h, w, sigma):
     return hm
 
 
-class ChipDataset(Dataset):
-    def __init__(self, root, split, years, train, size=None, stride=4, sigma_px=2.0, max_years=None, year_dropout=0.0):
-        self.root = os.path.join(root, split)
-        self.items = json.load(open(os.path.join(self.root, "index.json")))
+class BlockDataset(Dataset):
+    """Blocks of size S (default 1024) with per-year JPEGs; train = random crops, val = whole block."""
+    def __init__(self, root, split, years, train, crop=512, stride=4, sigma_px=2.0, max_years=None, year_dropout=0.0, min_years=1):
+        self.root = root
+        allitems = json.load(open(os.path.join(root, "index.json")))
+        self.items = [it for it in allitems if it["split"] == split and len([y for y in years if y in it["years"]]) >= min_years]
         self.years = years
         self.train = train
+        self.crop = crop
         self.stride = stride
         self.sigma = sigma_px
         self.max_years = max_years or len(years)
         self.year_dropout = year_dropout
-        self.size = size
 
     def __len__(self):
         return len(self.items)
 
     def load(self, it, year):
-        p = os.path.join(self.root, "chips", f"{it['id']}_{year}.png")
+        p = os.path.join(self.root, "blocks", f"{it['id']}_{year}.jpg")
         return np.asarray(Image.open(p).convert("RGB"))
 
     def __getitem__(self, i):
         it = self.items[i]
         avail = [y for y in self.years if y in it["years"]]
-        if self.train and self.year_dropout > 0 and len(avail) > 1:
-            avail = [y for y in avail if random.random() > self.year_dropout] or [random.choice(avail)]
+        if self.train:
+            if self.year_dropout > 0 and len(avail) > 1:
+                avail = [y for y in avail if random.random() > self.year_dropout] or [random.choice(avail)]
+            random.shuffle(avail)
         avail = avail[: self.max_years]
-        imgs = [self.load(it, y) for y in avail]
-        H, W = imgs[0].shape[:2]
         pts = np.array(it["points"], np.float32).reshape(-1, 2)
+        S = it["size"]
+        if self.train:
+            cx = random.randint(0, S - self.crop); cy = random.randint(0, S - self.crop)
+            imgs = [self.load(it, y)[cy:cy + self.crop, cx:cx + self.crop] for y in avail]
+            pts = pts - np.array([cx, cy], np.float32)
+            pts = pts[(pts[:, 0] >= 0) & (pts[:, 0] < self.crop) & (pts[:, 1] >= 0) & (pts[:, 1] < self.crop)]
+        else:
+            imgs = [self.load(it, y) for y in avail]
+        H, W = imgs[0].shape[:2]
         x = np.stack(imgs, 0)  # Y,H,W,3
         if self.train:
-            # random flips / 90-degree rotations (shadows rotate consistently across years)
             k = random.randint(0, 3)
             x = np.rot90(x, k, axes=(1, 2))
-            for _ in range(k):  # rotate points by 90deg CCW like np.rot90 on axes (H,W)
+            for _ in range(k):  # np.rot90 CCW: new (x,y) = (y, W-1-x)
                 pts = np.stack([pts[:, 1], W - 1 - pts[:, 0]], 1) if len(pts) else pts
                 H, W = W, H
             if random.random() < 0.5:
@@ -77,9 +87,8 @@ class ChipDataset(Dataset):
         mask = np.zeros(self.max_years, bool); mask[:Y] = True
         if Y < self.max_years:
             x = np.concatenate([x, np.zeros((self.max_years - Y,) + x.shape[1:], x.dtype)], 0)
-        x = torch.from_numpy(x).permute(0, 3, 1, 2)  # Y,3,H,W uint8
+        x = torch.from_numpy(x).permute(0, 3, 1, 2).contiguous()  # Y,3,H,W uint8
         if self.train:
-            # photometric jitter per year
             x = x.float()
             for yi in range(Y):
                 a = 1 + (random.random() - 0.5) * 0.4
@@ -111,7 +120,7 @@ def evaluate(model, loader, ds, device, stride, dist_px, threshes=(0.2, 0.3, 0.4
     stats = {t: [0, 0, 0] for t in threshes}
     for x, mask, hm, idx in loader:
         x, mask = x.to(device), mask.to(device)
-        with torch.autocast("cuda", dtype=torch.bfloat16):
+        with torch.autocast(device_type="cuda" if device == "cuda" else "cpu", dtype=torch.bfloat16, enabled=(device == "cuda")):
             logits = model(x, mask)
         logits = logits.float()
         for t in threshes:
@@ -142,17 +151,21 @@ def main():
     ap.add_argument("--dist_px", type=float, default=20, help="match radius in chip px")
     ap.add_argument("--year_dropout", type=float, default=0.3)
     ap.add_argument("--workers", type=int, default=8)
+    ap.add_argument("--crop", type=int, default=512)
+    ap.add_argument("--max_years", type=int, default=4)
+    ap.add_argument("--val_bs", type=int, default=8)
     ap.add_argument("--eval_every", type=int, default=1)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--device", default="cuda")
     args = ap.parse_args()
     torch.manual_seed(args.seed); random.seed(args.seed); np.random.seed(args.seed)
     os.makedirs(args.out, exist_ok=True)
     years = [int(y) for y in args.years.split(",")]
-    device = "cuda"
-    tr = ChipDataset(args.data, "train", years, True, sigma_px=args.sigma, year_dropout=args.year_dropout)
-    va = ChipDataset(args.data, "val", years, False, sigma_px=args.sigma)
+    device = args.device
+    tr = BlockDataset(args.data, "train", years, True, crop=args.crop, sigma_px=args.sigma, year_dropout=args.year_dropout, max_years=args.max_years)
+    va = BlockDataset(args.data, "val", years, False, sigma_px=args.sigma, max_years=args.max_years)
     tl = DataLoader(tr, args.bs, shuffle=True, num_workers=args.workers, drop_last=True, pin_memory=True, persistent_workers=True)
-    vl = DataLoader(va, args.bs, shuffle=False, num_workers=args.workers, pin_memory=True)
+    vl = DataLoader(va, args.val_bs, shuffle=False, num_workers=args.workers, pin_memory=True)
     model = PoleNet(args.backbone).to(device).to(memory_format=torch.channels_last)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
     steps = args.epochs * len(tl)
@@ -164,7 +177,7 @@ def main():
         model.train(); t0 = time.time(); tot = 0; n = 0
         for x, mask, hm, _ in tl:
             x, mask, hm = x.to(device, non_blocking=True), mask.to(device), hm.to(device)
-            with torch.autocast("cuda", dtype=torch.bfloat16):
+            with torch.autocast(device_type="cuda" if device == "cuda" else "cpu", dtype=torch.bfloat16, enabled=(device == "cuda")):
                 logits = model(x, mask)
             loss = focal_heatmap_loss(logits.float(), hm)
             opt.zero_grad(set_to_none=True)
