@@ -82,6 +82,15 @@ sys.path.insert(0, os.path.join(ROOT, "src"))
 import tiles  # noqa: E402
 from model import PoleNet, decode_peaks  # noqa: E402
 
+_log_lock = threading.Lock()
+_t0 = time.time()
+
+
+def log(msg):
+    with _log_lock:
+        print(f"[{time.time() - _t0:8.1f}s] {msg}", flush=True)
+
+
 Z = 20            # native grid of the KC cache
 BLOCK = 512       # cached inference unit, z20 px (~51 m)
 MARGIN = 64       # context around the block fed to the net
@@ -124,6 +133,7 @@ class Detector:
         ck = torch.load(ckpt, map_location="cpu")
         self.model = PoleNet(ck["args"]["backbone"], pretrained=False)
         self.model.load_state_dict(ck["model"]); self.model.to(device).eval()
+        log(f"loaded {os.path.basename(ckpt)} ({ck['args']['backbone']}) on {device}")
         self.device, self.years, self.register = device, years, register
         self.thresh_default = float(ck.get("thresh") or 0.25)
         self.lock = threading.Lock()          # one forward pass at a time
@@ -133,33 +143,55 @@ class Detector:
         tag = hashlib.sha1((os.path.basename(ckpt) + ",".join(map(str, years)) + str(register)).encode()).hexdigest()[:10]
         self.cache_dir = os.path.join(cache_dir or os.path.expanduser("~/.cache/streetlight-heatmap"), tag)
         os.makedirs(self.cache_dir, exist_ok=True)
-        self.stats = dict(blocks_computed=0, blocks_cached=0, seconds_model=0.0)
+        self.stats = dict(blocks_computed=0, blocks_cached=0, seconds_model=0.0, seconds_fetch=0.0, tiles_served=0)
+        self.tiles_inflight = 0; self.blocks_inflight = 0; self.model_queue = 0
+        self.recent = []                      # (t, seconds_model) of recent blocks, for the ETA
+        threading.Thread(target=self._heartbeat, daemon=True).start()
+
+    def _heartbeat(self):
+        while True:
+            time.sleep(5)
+            if self.tiles_inflight or self.blocks_inflight:
+                per = self.block_seconds()
+                log(f"working: {self.tiles_inflight} tile requests in flight, {self.blocks_inflight} blocks computing "
+                    f"({self.model_queue} waiting for the model), ~{per:.1f} s/block -> ~{self.model_queue * per:.0f} s of model work queued")
+
+    def block_seconds(self):
+        r = [d for t, d in self.recent[-20:]]
+        return sum(r) / len(r) if r else 3.0
 
     # --- one block: returns (heat[128x128] float16 for the core, peaks [(X,Y,score)] absolute z20 px)
     def block(self, bx, by):
+        """-> ((heat, peaks), source) with source in {"mem", "disk", "new"}"""
         key = (bx, by)
         with self.lock:
             hit = self.mem.get(key)
             if hit is not None:
-                self.mem.move_to_end(key); return hit
+                self.mem.move_to_end(key); return hit, "mem"
             ev = self.inflight.get(key)
             if ev is None:
                 ev = self.inflight[key] = threading.Event(); owner = True
             else:
                 owner = False
         if not owner:
-            ev.wait(); return self.block(bx, by)
+            ev.wait(); return self.block(bx, by)[0], "shared"
         try:
-            res = self._load_disk(key)
+            res = self._load_disk(key); source = "disk"
             if res is None:
-                res = self._compute(bx, by); self._save_disk(key, res); self.stats["blocks_computed"] += 1
+                self.blocks_inflight += 1
+                try:
+                    res = self._compute(bx, by)
+                finally:
+                    self.blocks_inflight -= 1
+                self._save_disk(key, res); self.stats["blocks_computed"] += 1; source = "new"
             else:
                 self.stats["blocks_cached"] += 1
+                log(f"block {bx}_{by}: from disk cache ({len(res[1])} peaks)")
             with self.lock:
                 self.mem[key] = res
                 while len(self.mem) > self.mem_blocks:
                     self.mem.popitem(last=False)
-            return res
+            return res, source
         finally:
             with self.lock:
                 self.inflight.pop(key, None)
@@ -184,21 +216,33 @@ class Detector:
 
     def _compute(self, bx, by):
         x0, y0, S = bx - MARGIN, by - MARGIN, BLOCK + 2 * MARGIN
-        imgs = []
+        t_fetch = time.time()
+        imgs, used = [], []
         for yr in self.years:
             img, cov = tiles.fetch_block(yr, Z, x0, y0, S, S, self.pool)
             if cov.mean() > 0.5:
-                imgs.append(img)
+                imgs.append(img); used.append(yr)
+        t_fetch = time.time() - t_fetch; self.stats["seconds_fetch"] += t_fetch
         if not imgs:
+            log(f"block {bx}_{by}: no imagery for any year (outside King County coverage?)")
             return np.zeros((BLOCK // STRIDE, BLOCK // STRIDE), np.float16), []
+        t_reg = time.time(); shifts = []
         if self.register and len(imgs) > 1:
-            ref = imgs[0]
-            imgs = [ref] + [translate(im, *estimate_shift(ref, im)) for im in imgs[1:]]
+            ref = imgs[0]; out = [ref]
+            for im in imgs[1:]:
+                dx, dy = estimate_shift(ref, im); shifts.append((dx, dy)); out.append(translate(im, dx, dy))
+            imgs = out
+        t_reg = time.time() - t_reg
         x = torch.from_numpy(np.stack(imgs)).permute(0, 3, 1, 2)[None].to(self.device)
-        t = time.time()
+        self.model_queue += 1
+        t_wait = time.time()
         with self.lock, torch.no_grad(), torch.autocast(device_type="cuda", dtype=torch.bfloat16, enabled=self.device == "cuda"):
+            self.model_queue -= 1
+            t_wait = time.time() - t_wait; t = time.time()
             logits = self.model(x).float()
-        self.stats["seconds_model"] += time.time() - t
+            t_model = time.time() - t
+        self.stats["seconds_model"] += t_model
+        self.recent.append((time.time(), t_model)); self.recent = self.recent[-50:]
         prob = torch.sigmoid(logits)[0, 0].cpu().numpy()                    # (S/4, S/4)
         m = MARGIN // STRIDE
         core = prob[m:m + BLOCK // STRIDE, m:m + BLOCK // STRIDE].astype(np.float16)
@@ -207,6 +251,9 @@ class Detector:
             X, Y = x0 + hx * STRIDE + STRIDE / 2, y0 + hy * STRIDE + STRIDE / 2
             if bx <= X < bx + BLOCK and by <= Y < by + BLOCK:
                 peaks.append((X, Y, s))
+        log(f"block {bx}_{by}: years {used} fetched in {t_fetch:.1f}s, registered in {t_reg:.1f}s"
+            f"{' shifts ' + str(shifts) if any(shifts) else ''}, waited {t_wait:.1f}s for the model, model {t_model:.1f}s"
+            f" -> {len(peaks)} peaks (max score {max([p[2] for p in peaks], default=0):.2f})")
         return core, peaks
 
     # --- assemble a tile
@@ -215,10 +262,18 @@ class Detector:
         S = int(round(256 * f))                # tile size in z20 px: 8192 @z15 ... 512 @z19, 128 @z21, 32 @z23
         px0, py0 = x * S, y * S
         H = max(1, S // STRIDE)
-        heat = np.zeros((H, H), np.float32); peaks = []
+        t0 = time.time()
+        self.tiles_inflight += 1
+        try:
+            return self._tile(z, x, y, S, px0, py0, H, saturate, thresh, draw_peaks, t0)
+        finally:
+            self.tiles_inflight -= 1
+
+    def _tile(self, z, x, y, S, px0, py0, H, saturate, thresh, draw_peaks, t0):
+        heat = np.zeros((H, H), np.float32); peaks = []; sources = []
         for by in range((py0 // BLOCK) * BLOCK, py0 + S, BLOCK):
             for bx in range((px0 // BLOCK) * BLOCK, px0 + S, BLOCK):
-                core, pk = self.block(bx, by)
+                (core, pk), src = self.block(bx, by); sources.append(src)
                 hx0, hy0 = (bx - px0) // STRIDE, (by - py0) // STRIDE
                 sx0, sy0 = max(0, -hx0), max(0, -hy0)
                 dx0, dy0 = max(0, hx0), max(0, hy0)
@@ -226,7 +281,11 @@ class Detector:
                 if w > 0 and h > 0:
                     heat[dy0:dy0 + h, dx0:dx0 + w] = core[sy0:sy0 + h, sx0:sx0 + w]
                 peaks += [(X, Y, s) for X, Y, s in pk if px0 <= X < px0 + S and py0 <= Y < py0 + S]
-        return render(heat, peaks, px0, py0, f, saturate, thresh, draw_peaks)
+        self.stats["tiles_served"] += 1
+        c = {k: sources.count(k) for k in ("new", "shared", "disk", "mem")}
+        log(f"tile {z}/{x}/{y}: {len(sources)} blocks ({c['new']} computed, {c['shared']} computed by another request, {c['disk']} from disk, {c['mem']} in memory)"
+            f" in {time.time() - t0:.1f}s -> {sum(1 for p in peaks if p[2] >= thresh)} rings | still in flight: {self.tiles_inflight - 1} tiles")
+        return render(heat, peaks, px0, py0, 2.0 ** (Z - z), saturate, thresh, draw_peaks)
 
 
 def render(heat, peaks, px0, py0, f, saturate, thresh, draw_peaks):
@@ -279,7 +338,12 @@ def main():
     years = [int(y) for y in args.years.split(",")]
     det = Detector(args.ckpt, years, device, register=not args.no_register, cache_dir=args.cache_dir)
     thresh = args.thresh if args.thresh is not None else det.thresh_default
-    print(f"model {os.path.basename(args.ckpt)} on {device}; years {years}; peak thresh {thresh}; tile cache {tiles.CACHE}; block cache {det.cache_dir}", flush=True)
+    log(f"model {os.path.basename(args.ckpt)} on {device}; years {years}; peak thresh {thresh}")
+    log(f"imagery tile cache {tiles.CACHE}; block result cache {det.cache_dir}")
+    log("cost guide: one 512 px block (~51 m) = fetching the years' tiles once (fast, cached on disk) + one model pass"
+        " (~1-3 s on a laptop CPU, ~0.1 s on a GPU). A z18 tile is 4 blocks, z19 is 1; iD requests ~20-40 tiles per screen,"
+        " so the first look at a new area can take a minute or more on CPU. Every block is cached afterwards.")
+    log("watch this log: each tile and block prints timings; a 'working:' heartbeat appears every 5 s while requests are pending")
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, fmt, *a):
@@ -321,11 +385,11 @@ def main():
                 self._send(404, b"not found", "text/plain")
             except Exception as e:  # keep the server alive; iD just gets a blank tile
                 import traceback
-                print("error", self.path, repr(e), flush=True); traceback.print_exc()
+                log(f"error {self.path}: {e!r}"); traceback.print_exc()
                 self._send(500, repr(e).encode(), "text/plain")
 
     srv = ThreadingHTTPServer((args.host, args.port), H)
-    print(f"serving on http://{args.host}:{args.port}/  ->  iD custom background: http://localhost:{args.port}/{{zoom}}/{{x}}/{{y}}.png", flush=True)
+    log(f"serving on http://{args.host}:{args.port}/  ->  iD custom background: http://localhost:{args.port}/{{zoom}}/{{x}}/{{y}}.png")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
