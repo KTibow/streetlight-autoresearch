@@ -178,3 +178,10 @@ Adding ~430 city blocks taught Redmond-style light standards without hurting Sea
 ### End-to-end inference check (repo weights `polenet_r34_multiyear_v2.pt`, CPU, 3 years)
 `infer.py` on a 220 m square of Wallingford: 23 detections (21 ≥ 0.5) vs 23 SCL labels in the box;
 21 detections within 3 m of a label and 21 labels within 3 m of a detection.
+
+### v2_cnxt (ConvNeXt-Tiny on v2 data, 60 ep) — FINAL MODEL (`weights/polenet_cnxt_multiyear_v2.pt`)
+Per-set val, 7 years, 2 m: Seattle **P 0.705 / R 0.751 / F1 0.727** · Redmond P 0.60 / R 0.58 / F1 0.589 ·
+Renton P 0.44 / R 0.735 · Federal Way 0.06 · all-val F1 0.682 at thr 0.25.
+Seattle radius sweep (thr 0.25): 1 m 0.53 · 1.5 m 0.67 · 2 m 0.73 · 3 m 0.78 · 4 m 0.80 · 6 m 0.82.
+Years at inference (Seattle, 2 m): 7 → 0.730, 4 → 0.705, 1 (2025 only) → 0.594.
+Node inference over 1 km × 0.8 km of Wallingford with v2_r34: 338 detections, 266 ≥ 0.5.

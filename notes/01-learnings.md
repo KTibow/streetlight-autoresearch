@@ -59,4 +59,20 @@
   2k blocks take 12 s, so the whole study cost a few dollars of GPU. The wall clock went to data.
 
 ## v2 (SCL + city streetlight layers + pseudo-labelled utility poles)
-(filled in below when the runs finish)
+Adding ~430 blocks from Redmond/Renton/Federal Way/Kirkland streetlight layers (with the v1 model's
+confident detections filling in their unlabelled utility poles) and switching to ConvNeXt-Tiny:
+
+| model | Seattle F1@2 m | Seattle @3 m | Redmond R@2 m | Renton R@2 m |
+|---|---|---|---|---|
+| v1 ResNet-34 (run 1) | 0.703 | 0.73 | 0.35 | – |
+| v1 ResNet-34 refined labels | 0.716 | 0.767 | 0.42 | 0.735 |
+| v2 ResNet-34 | 0.711 | – | 0.54 | 0.75 |
+| **v2 ConvNeXt-Tiny (final)** | **0.727** (0.730 at thr 0.25) | **0.776** | **0.58** | 0.735 |
+
+Years at inference matter even for the final model: Seattle F1@2 m 0.730 with 7 years, 0.705 with 4,
+0.594 with only 2025. Federal Way's legacy layer scores ~0.06 for every model; its points are corner
+signal/light masts with coarse positions and I treat it as not-ground-truth rather than a model failure.
+Redmond's remaining misses are pedestrian/decorative lights under 20 ft and poles under evergreens.
+
+Cost: ≈ $8 of H100 time for everything above (7 training runs, all evaluation), ~3 h wall clock for
+data, ~2 h for training and analysis.
