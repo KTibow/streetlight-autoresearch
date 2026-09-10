@@ -3,7 +3,7 @@ import json, gzip, os, sys, time, requests
 
 CA = "/root/.ccr/ca-bundle.crt"
 OUT = os.path.join(os.path.dirname(__file__), "..", "labels")
-S = requests.Session(); S.verify = CA
+S = requests.Session(); S.verify = CA; S.headers["User-Agent"] = "streetlight-autoresearch/0.1 (github.com/KTibow/streetlight-autoresearch)"
 LAYERS = {
     # name: (url, keep_fields)
     "scl_poles": ("https://services.arcgis.com/ZOyb2t4B0UYuYNYH/arcgis/rest/services/Seattle_City_Light_Poles_PROD/FeatureServer/1", ["FACILITYTYPE", "HEIGHT", "HAS_STREETLIGHT"]),

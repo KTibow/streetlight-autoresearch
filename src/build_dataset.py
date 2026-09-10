@@ -46,6 +46,8 @@ def main():
     ap.add_argument("--workers", type=int, default=24)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--quality", type=int, default=92)
+    ap.add_argument("--reverse", action="store_true", help="process blocks in reverse order (second worker process)")
+    ap.add_argument("--index_name", default="index.json")
     args = ap.parse_args()
     random.seed(args.seed)
     years = [int(y) for y in args.years.split(",")]
@@ -126,6 +128,8 @@ def main():
     print(f"keeping {n_with} blocks with poles + {n_empty} empty; train {sum(r['split']=='train' for r in keep)} val {sum(r['split']=='val' for r in keep)}", flush=True)
 
     os.makedirs(os.path.join(args.out, "blocks"), exist_ok=True)
+    if args.reverse:
+        keep = keep[::-1]
     pool = tiles.make_pool(args.workers)
     done = 0
     for r in keep:
@@ -144,8 +148,8 @@ def main():
         done += 1
         if done % 20 == 0:
             print(f"{done}/{len(keep)} blocks", flush=True)
-            json.dump(keep, open(os.path.join(args.out, "index.json"), "w"))
-    json.dump(keep, open(os.path.join(args.out, "index.json"), "w"))
+            json.dump(keep, open(os.path.join(args.out, args.index_name), "w"))
+    json.dump(keep, open(os.path.join(args.out, args.index_name), "w"))
     print("done", flush=True)
 
 
