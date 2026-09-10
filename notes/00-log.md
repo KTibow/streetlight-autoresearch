@@ -104,3 +104,14 @@ Recall by SCL pole HEIGHT: <20 ft **0.29** (n=147) · 20–34 ft 0.42 (n=134) ·
 → Misses are dominated by short poles (small/no shadow, small top). 44 of 484 FPs are within 24 px of
 the block edge (an artifact the inference script already crops away); only 20 FPs are within 4 m of an
 OSM pole-ish node, so "unlabelled but mapped" poles do not explain the FPs.
+
+**Crops of the 8 highest-confidence "false positives" (score 0.61–0.75): every one is a real pole**
+(shadow, wires converging, visible in 2017/2021/2025). Crops of missed ≥45 ft poles: several have a
+real pole 2–4 m from the label point. Conclusion: the public SCL layer is incomplete and positionally
+coarsened ("generalized for public use"), and the model is better than the 2 m metric says.
+
+Fuller SCL layer (`SCL_Poles/FeatureServer/0`, 112k): identical positions for shared poles, 12% extra
+points. Re-scoring run 1 against it: P 0.698→0.729 but R 0.714→0.683, F1 unchanged (0.705). So the
+extra points are partly retired/invisible poles, and the verified-real FPs are missing from both layers.
+Plan: label refinement (snap labels to confident predictions within 5 m, add confident unlabelled
+predictions as positives on TRAIN only), retrain, and keep scoring against the untouched val labels.
