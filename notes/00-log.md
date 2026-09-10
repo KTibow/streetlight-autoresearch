@@ -135,3 +135,13 @@ unlit utility poles). By Redmond attributes:
 which SCL's layer is 90%+ of) and never learned small steel/concrete light standards. This is a label
 coverage gap, not an imagery limit. Fix in progress: add Redmond/Renton/Federal Way/Kirkland streetlight
 layers to training (spatial val split), filling in their unlabelled utility poles with run-1 detections.
+
+### Runs 3–4 final
+- `multi_r34_long` (100 ep, original labels): best F1@2 m **0.701** (epoch 63).
+- `multi_r34_refined` (60 ep, snapped train labels): best **0.709** (epoch 47), P 0.75 / R 0.67 at thr 0.3.
+Label refinement helps a little and converges faster; the ceiling against the raw SCL labels is ~0.70.
+
+### Dataset v2 (in progress)
+SCL (refined train labels) + Redmond/Renton/Federal Way(/Kirkland) streetlight sets (150 blocks each,
+30% val by cell) with pseudo-labels for their unlabelled utility poles (model score ≥0.5, ≥5 m from any
+city label). Goal: teach the detector short steel/concrete light standards without unlearning poles.
