@@ -43,7 +43,8 @@ for each block the server fetches the chosen years (with a 64 px margin), regist
 newest year, runs the detector once, and caches the heat-map + peaks (in memory and under
 ~/.cache/streetlight-heatmap). Tiles are then cut from the cached blocks and resampled, so panning
 around the same area is cheap and only new ground costs a model call (a few seconds per block on a
-laptop CPU, ~0.1 s on a GPU). Tiles below --min-zoom are served empty to avoid runaway work.
+laptop CPU, ~0.1 s on a GPU). Tiles below --min-zoom show only blocks already computed (never-computed
+areas are shaded gray) so a zoomed-out view cannot trigger runaway work.
 
 Colour scale: the net rarely outputs >0.6, so the heat is saturated at --saturate (default 0.5):
 p=0.05 faint yellow ... p>=0.5 solid red. Rings mark peak-picked detections above --thresh.
@@ -197,6 +198,19 @@ class Detector:
                 self.inflight.pop(key, None)
             ev.set()
 
+    def lookup(self, bx, by):
+        """Cache-only: memory, then disk. Never computes. -> (heat, peaks) or None"""
+        key = (bx, by)
+        with self.lock:
+            hit = self.mem.get(key)
+        if hit is not None:
+            return hit
+        res = self._load_disk(key)
+        if res is not None:
+            with self.lock:
+                self.mem[key] = res
+        return res
+
     def _disk_path(self, key):
         return os.path.join(self.cache_dir, f"{key[0]}_{key[1]}.npz")
 
@@ -257,7 +271,7 @@ class Detector:
         return core, peaks
 
     # --- assemble a tile
-    def tile(self, z, x, y, saturate, thresh, draw_peaks=True):
+    def tile(self, z, x, y, saturate, thresh, draw_peaks=True, compute=True):
         f = 2.0 ** (Z - z)                     # z20 px per requested-tile px (fractional above z20)
         S = int(round(256 * f))                # tile size in z20 px: 8192 @z15 ... 512 @z19, 128 @z21, 32 @z23
         px0, py0 = x * S, y * S
@@ -265,35 +279,49 @@ class Detector:
         t0 = time.time()
         self.tiles_inflight += 1
         try:
-            return self._tile(z, x, y, S, px0, py0, H, saturate, thresh, draw_peaks, t0)
+            return self._tile(z, x, y, S, px0, py0, H, saturate, thresh, draw_peaks, t0, compute)
         finally:
             self.tiles_inflight -= 1
 
-    def _tile(self, z, x, y, S, px0, py0, H, saturate, thresh, draw_peaks, t0):
+    def _tile(self, z, x, y, S, px0, py0, H, saturate, thresh, draw_peaks, t0, compute):
         heat = np.zeros((H, H), np.float32); peaks = []; sources = []
+        missing = np.zeros((H, H), bool)      # block areas with no cached result (cache-only mode)
         for by in range((py0 // BLOCK) * BLOCK, py0 + S, BLOCK):
             for bx in range((px0 // BLOCK) * BLOCK, px0 + S, BLOCK):
-                (core, pk), src = self.block(bx, by); sources.append(src)
+                if compute:
+                    (core, pk), src = self.block(bx, by)
+                else:
+                    hit = self.lookup(bx, by)
+                    (core, pk), src = (hit, "mem") if hit is not None else ((np.zeros((BLOCK // STRIDE, BLOCK // STRIDE), np.float16), []), "missing")
+                sources.append(src)
                 hx0, hy0 = (bx - px0) // STRIDE, (by - py0) // STRIDE
                 sx0, sy0 = max(0, -hx0), max(0, -hy0)
                 dx0, dy0 = max(0, hx0), max(0, hy0)
                 w = min(core.shape[1] - sx0, H - dx0); h = min(core.shape[0] - sy0, H - dy0)
                 if w > 0 and h > 0:
                     heat[dy0:dy0 + h, dx0:dx0 + w] = core[sy0:sy0 + h, sx0:sx0 + w]
+                    if src == "missing":
+                        missing[dy0:dy0 + h, dx0:dx0 + w] = True
                 peaks += [(X, Y, s) for X, Y, s in pk if px0 <= X < px0 + S and py0 <= Y < py0 + S]
         self.stats["tiles_served"] += 1
-        c = {k: sources.count(k) for k in ("new", "shared", "disk", "mem")}
-        log(f"tile {z}/{x}/{y}: {len(sources)} blocks ({c['new']} computed, {c['shared']} computed by another request, {c['disk']} from disk, {c['mem']} in memory)"
-            f" in {time.time() - t0:.1f}s -> {sum(1 for p in peaks if p[2] >= thresh)} rings | still in flight: {self.tiles_inflight - 1} tiles")
-        return render(heat, peaks, px0, py0, 2.0 ** (Z - z), saturate, thresh, draw_peaks)
+        c = {k: sources.count(k) for k in ("new", "shared", "disk", "mem", "missing")}
+        if compute:
+            log(f"tile {z}/{x}/{y}: {len(sources)} blocks ({c['new']} computed, {c['shared']} computed by another request, {c['disk']} from disk, {c['mem']} in memory)"
+                f" in {time.time() - t0:.1f}s -> {sum(1 for p in peaks if p[2] >= thresh)} rings | still in flight: {self.tiles_inflight - 1} tiles")
+        else:
+            log(f"tile {z}/{x}/{y}: below min zoom, cache only: {len(sources) - c['missing']} of {len(sources)} blocks cached (gray = not computed yet)")
+        return render(heat, peaks, px0, py0, 2.0 ** (Z - z), saturate, thresh, draw_peaks, missing if not compute else None)
 
 
-def render(heat, peaks, px0, py0, f, saturate, thresh, draw_peaks):
+def render(heat, peaks, px0, py0, f, saturate, thresh, draw_peaks, missing=None):
     t = np.clip(heat / saturate, 0, 1)
     if t.shape[0] != 256:
         t = np.asarray(Image.fromarray((t * 255).astype(np.uint8)).resize((256, 256), Image.BILINEAR)) / 255.0
     r = np.clip(3 * t, 0, 1); g = np.clip(3 * t - 1, 0, 1); b = np.clip(3 * t - 2, 0, 1)
     a = np.where(t < 0.04, 0, np.clip(0.25 + t, 0, 0.9))
+    if missing is not None and missing.any():   # cache-only tile: shade never-computed areas gray
+        m = np.asarray(Image.fromarray(missing.astype(np.uint8) * 255).resize((256, 256), Image.NEAREST)) > 0
+        r[m], g[m], b[m], a[m] = 0.5, 0.5, 0.5, 0.35
     rgba = (np.stack([r, g, b, a], -1) * 255).astype(np.uint8)
     im = Image.fromarray(rgba, "RGBA")
     if draw_peaks and f <= 8:  # rings only at z17+
@@ -345,6 +373,8 @@ def main():
         " so the first look at a new area can take a minute or more on CPU. Every block is cached afterwards.")
     log("watch this log: each tile and block prints timings; a 'working:' heartbeat appears every 5 s while requests are pending")
 
+    warned = set()
+
     class H(BaseHTTPRequestHandler):
         def log_message(self, fmt, *a):
             pass
@@ -376,10 +406,15 @@ def main():
                     return self._send(200, json.dumps(dict(type="FeatureCollection", features=feats)).encode(), "application/geo+json")
                 if len(parts) == 3:
                     z, x, y = int(parts[0]), int(parts[1]), int(parts[2].split(".")[0])
-                    if z < args.min_zoom or z > 23:
+                    if z > 23 or z < 12:
                         im = EMPTY
                     else:
-                        im = det.tile(z, x, y, float(q.get("saturate", [args.saturate])[0]), float(q.get("thresh", [thresh])[0]), q.get("peaks", ["1"])[0] != "0")
+                        below = z < args.min_zoom
+                        if below and z not in warned:
+                            warned.add(z)
+                            log(f"zoom {z} is below --min-zoom {args.min_zoom}: serving CACHED blocks only (gray = not computed). "
+                                f"Zoom in to z{args.min_zoom}+ to compute, or restart with --min-zoom {z} (a z{z} tile is {4 ** (Z - 1 - z)} blocks).")
+                        im = det.tile(z, x, y, float(q.get("saturate", [args.saturate])[0]), float(q.get("thresh", [thresh])[0]), q.get("peaks", ["1"])[0] != "0", compute=not below)
                     buf = io.BytesIO(); im.save(buf, "PNG")
                     return self._send(200, buf.getvalue(), "image/png")
                 self._send(404, b"not found", "text/plain")

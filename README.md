@@ -43,7 +43,8 @@ cuts tiles from the cache. Heat is saturated at p=0.5 (`--saturate`) because the
 0.6; white rings mark peak-picked detections ≥ the checkpoint's threshold (`--thresh`).
 Cost: a laptop CPU does roughly one block per 3 s with ConvNeXt-Tiny on 4 years, about 1.5 s with
 `--ckpt weights/polenet_r34_multiyear_v2.pt`; a GPU does tens per second. Tiles below `--min-zoom`
-(default 18) are served empty so a zoomed-out view cannot trigger thousands of model calls.
+(default 18) show only already-computed blocks, with never-computed ground shaded gray, so a zoomed-out
+view cannot trigger thousands of model calls; the log says so once per zoom level.
 `/peaks.geojson?bbox=lon0,lat0,lon1,lat1` returns the cached detections as GeoJSON, `/status` shows counters.
 
 ## Run the detector on an area
