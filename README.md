@@ -33,8 +33,8 @@ One file, PEP 723 metadata, so with [uv](https://docs.astral.sh/uv/) it is just:
 ```
 uv run serve_heatmap.py            # CPU; add --device cuda / --device mps if you have it
 ```
-If it dies with `operator torchvision::nms does not exist`, uv reused a script environment with a
-mismatched torchvision from an older header; `rm -rf ~/.cache/uv/environments-v2/serve-heatmap-*` and rerun.
+If uv's cached script environment holds a torchvision that does not match torch (`operator torchvision::nms
+does not exist`), the script notices at startup and re-runs itself once with `--reinstall-package` to fix it.
 then in iD open Background settings → Custom and paste `http://localhost:8765/{zoom}/{x}/{y}.png`
 (JOSM: Imagery preferences → add TMS with the same template). The server fetches King County imagery
 for the requested area (default years 2025,2023,2021,2019), runs the detector once per 512 px block

@@ -25,9 +25,10 @@
     uv run serve_heatmap.py                      # uses weights/polenet_cnxt_multiyear_v2.pt
     uv run serve_heatmap.py --years 2025,2023,2021,2019,2017,2015,2013 --device cuda
 
-If startup fails with "operator torchvision::nms does not exist", the environment holds a torchvision
-that does not match its torch (typically a stale uv script environment from an earlier header).
-Rebuild it once:  rm -rf ~/.cache/uv/environments-v2/serve-heatmap-*   then run again.
+torch/torchvision must be a matched pair; uv keeps syncing one script environment in place and treats
+a PyPI torchvision 0.29.0 as equal to the CPU-index 0.29.0+cpu, so an older environment can hold a
+mismatched pair ("operator torchvision::nms does not exist"). The script detects that at startup and
+re-runs itself once with `uv run --reinstall-package torch --reinstall-package torchvision`.
 
 Then in iD: Background settings -> "Custom" -> paste
 
@@ -57,6 +58,26 @@ import numpy as np, torch, torch.nn.functional as F
 from PIL import Image, ImageDraw
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
+
+
+def _check_torchvision():
+    """timm imports torchvision; a torchvision whose compiled ops don't match this torch fails with
+    'operator torchvision::nms does not exist'. That happens when uv keeps syncing an older script
+    environment in place. Detect it and rebuild the two packages once, automatically."""
+    try:
+        import torchvision  # noqa: F401
+        return
+    except Exception as e:  # RuntimeError from torchvision, or ImportError
+        err = e
+    in_uv_env = "environments-v2" in sys.prefix or os.environ.get("UV")
+    if in_uv_env and not os.environ.get("STREETLIGHT_REINSTALLED"):
+        print(f"torchvision does not match torch in {sys.prefix} ({err}); reinstalling torch+torchvision once via uv...", flush=True)
+        os.environ["STREETLIGHT_REINSTALLED"] = "1"
+        os.execvp("uv", ["uv", "run", "--reinstall-package", "torch", "--reinstall-package", "torchvision", os.path.abspath(__file__), *sys.argv[1:]])
+    sys.exit(f"torch/torchvision mismatch: {err}\nFix: uv run --reinstall-package torch --reinstall-package torchvision serve_heatmap.py\n(or delete {sys.prefix} and run again)")
+
+
+_check_torchvision()
 sys.path.insert(0, os.path.join(ROOT, "src"))
 import tiles  # noqa: E402
 from model import PoleNet, decode_peaks  # noqa: E402
