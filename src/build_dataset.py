@@ -22,7 +22,7 @@ def load_points(path):
     pts = []
     for f in gj["features"]:
         g = f["geometry"]
-        if g["type"] != "Point":
+        if not g or g["type"] != "Point" or len(g.get("coordinates", [])) < 2:
             continue
         lon, lat = g["coordinates"][:2]
         pts.append((lon, lat, f.get("properties", {})))
