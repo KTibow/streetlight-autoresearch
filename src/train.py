@@ -127,7 +127,7 @@ def match_points(pred, gt, thresh):
 
 
 @torch.no_grad()
-def evaluate(model, loader, ds, device, stride, dist_px, threshes=(0.2, 0.3, 0.4, 0.5, 0.6)):
+def evaluate(model, loader, ds, device, stride, dist_px, threshes=(0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5)):
     model.eval()
     stats = {t: [0, 0, 0] for t in threshes}
     for x, mask, hm, idx in loader:
