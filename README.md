@@ -2,6 +2,19 @@
 
 Detecting poles (streetlights, utility/power poles) in King County multi-year orthoimagery.
 Research log: `notes/00-log.md`. Learnings: `notes/01-learnings.md`. Weights: `weights/`.
+Example overlays (green = matched, red = missed label, magenta = detection with no label): `results/examples/`.
+
+## Result (final model `weights/polenet_cnxt_multiyear_v2.pt`, ConvNeXt-Tiny, all 7 years at inference)
+| val set | P | R | F1@2 m | F1@3 m |
+|---|---|---|---|---|
+| Seattle, 383 held-out blocks / 1,417 SCL poles | 0.705 | 0.751 | 0.727 | 0.776 |
+| Redmond (city streetlight layer) | 0.60 | 0.58 | 0.59 | – |
+Single-year → multi-year is worth +0.09–0.14 F1; the highest-scored "false positives" are real poles the
+public layers miss, so treat the score as a lower bound. Short (<20 ft) light standards and poles under
+evergreens are the remaining misses. GPU cost of the whole study: ≈ $7.5.
+
+Weights in `weights/`: `polenet_r34_multiyear_v1.pt` (Seattle-only, F1 0.688), `polenet_r34_multiyear_v2.pt`
+(0.711), `polenet_cnxt_multiyear_v2.pt` (0.727). All fp16 state dicts loadable by `infer.py`.
 
 ## Pipeline
 | step | script |
@@ -19,7 +32,7 @@ Research log: `notes/00-log.md`. Learnings: `notes/01-learnings.md`. Weights: `w
 ```
 pip install torch timm pillow numpy scipy requests
 cd src
-python infer.py --ckpt ../weights/<weights>.pt --bbox=-122.35,47.65,-122.33,47.66 \
+python infer.py --ckpt ../weights/polenet_cnxt_multiyear_v2.pt --bbox=-122.35,47.65,-122.33,47.66 \
     --years 2025,2023,2021,2019,2017,2015,2013 --out poles.geojson
 ```
 Tiles are fetched from King County on the fly (cached under `~/tile_cache`). Output points carry a

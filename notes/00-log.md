@@ -185,3 +185,12 @@ Renton P 0.44 / R 0.735 · Federal Way 0.06 · all-val F1 0.682 at thr 0.25.
 Seattle radius sweep (thr 0.25): 1 m 0.53 · 1.5 m 0.67 · 2 m 0.73 · 3 m 0.78 · 4 m 0.80 · 6 m 0.82.
 Years at inference (Seattle, 2 m): 7 → 0.730, 4 → 0.705, 1 (2025 only) → 0.594.
 Node inference over 1 km × 0.8 km of Wallingford with v2_r34: 338 detections, 266 ≥ 0.5.
+
+### Wrap-up
+Node `kcpole-train` stopped (105 H100 minutes, ≈$7.5). Mission finished:
+https://autoresearch.sfcompute.com/missions/kc-pole-detection. Everything (code, labels, notes, three
+weight files, example overlays, a sample GeoJSON) is on branch `claude/hopeful-ptolemy-5zuehs`.
+Not done / next: (1) audit high-confidence detections against street-level imagery to quantify the
+true precision; (2) a leaf-off epoch or LiDAR-derived pole candidates for evergreen areas; (3) train
+on the full 20k candidate SCL blocks (only 2.4k used) plus more small-light examples; (4) run the
+detector county-wide and diff against OSM.
