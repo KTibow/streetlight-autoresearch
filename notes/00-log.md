@@ -75,3 +75,12 @@ EagleView years, with a wider per-block spread in 2013. Some ">10 px" cases are 
 (trees, redevelopment) rather than true offsets. Fix: `src/register_years.py` stores per-block per-year
 integer shifts (clamped to ±16 px, dropped when the correlation peak is not distinct) in the index and
 the loader translates each year to the 2023 grid. Labels themselves sit on the recent imagery.
+
+Full-dataset registration (2,386 blocks, vs 2023): 2013 median (0,+2) px with 39% of blocks >6 px;
+2015/2017 median (-2,+3)/(-2,+2), 16–18% >6 px; 2019/2021 6% >6 px; 2025 11% >6 px. Shifts stored in
+the index and applied at load time. Dataset shipped to the H100 node as a 5.5 GB context
+(upload ~35 MB/s per stream ×4; S3 us-west-2 → europe-north1 node ~14 MB/s).
+
+### Run 1: `multi_r34`
+ResNet-34 shared encoder, up to 4 of 7 years per sample (year dropout 0.3), 512 px crops, bs 16,
+AdamW 3e-4 one-cycle, 30 epochs, focal heatmap loss at stride 4 (sigma 2 = 0.8 m), match radius 20 px (2 m).
