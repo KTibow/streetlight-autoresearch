@@ -211,10 +211,10 @@ class Detector:
 
     # --- assemble a tile
     def tile(self, z, x, y, saturate, thresh, draw_peaks=True):
-        f = 2 ** (Z - z)                       # z20 px per requested-tile px
-        S = 256 * f                            # tile size in z20 px
+        f = 2.0 ** (Z - z)                     # z20 px per requested-tile px (fractional above z20)
+        S = int(round(256 * f))                # tile size in z20 px: 8192 @z15 ... 512 @z19, 128 @z21, 32 @z23
         px0, py0 = x * S, y * S
-        H = S // STRIDE
+        H = max(1, S // STRIDE)
         heat = np.zeros((H, H), np.float32); peaks = []
         for by in range((py0 // BLOCK) * BLOCK, py0 + S, BLOCK):
             for bx in range((px0 // BLOCK) * BLOCK, px0 + S, BLOCK):
@@ -238,7 +238,7 @@ def render(heat, peaks, px0, py0, f, saturate, thresh, draw_peaks):
     rgba = (np.stack([r, g, b, a], -1) * 255).astype(np.uint8)
     im = Image.fromarray(rgba, "RGBA")
     if draw_peaks and f <= 8:  # rings only at z17+
-        d = ImageDraw.Draw(im); rad = max(3, int(10 / f * 2))
+        d = ImageDraw.Draw(im); rad = max(3, min(28, int(20 / f)))
         for X, Y, s in peaks:
             if s < thresh:
                 continue
@@ -312,7 +312,7 @@ def main():
                     return self._send(200, json.dumps(dict(type="FeatureCollection", features=feats)).encode(), "application/geo+json")
                 if len(parts) == 3:
                     z, x, y = int(parts[0]), int(parts[1]), int(parts[2].split(".")[0])
-                    if z < args.min_zoom or z > 22:
+                    if z < args.min_zoom or z > 23:
                         im = EMPTY
                     else:
                         im = det.tile(z, x, y, float(q.get("saturate", [args.saturate])[0]), float(q.get("thresh", [thresh])[0]), q.get("peaks", ["1"])[0] != "0")
@@ -320,7 +320,8 @@ def main():
                     return self._send(200, buf.getvalue(), "image/png")
                 self._send(404, b"not found", "text/plain")
             except Exception as e:  # keep the server alive; iD just gets a blank tile
-                print("error", self.path, repr(e), flush=True)
+                import traceback
+                print("error", self.path, repr(e), flush=True); traceback.print_exc()
                 self._send(500, repr(e).encode(), "text/plain")
 
     srv = ThreadingHTTPServer((args.host, args.port), H)
