@@ -115,3 +115,11 @@ points. Re-scoring run 1 against it: P 0.698→0.729 but R 0.714→0.683, F1 unc
 extra points are partly retired/invisible poles, and the verified-real FPs are missing from both layers.
 Plan: label refinement (snap labels to confident predictions within 5 m, add confident unlabelled
 predictions as positives on TRAIN only), retrain, and keep scoring against the untouched val labels.
+
+### Runs 3–4 (in progress)
+- `multi_r34_long` (100 epochs, original labels): F1 0.69 by epoch 23, 0.696 by epoch 45 — the 30-epoch
+  run was already near the ceiling for these labels.
+- `multi_r34_refined` (60 epochs, train labels snapped to run-1 predictions ≤5 m, +44 added points;
+  val untouched): F1 0.666 at epoch 5 (run 1: 0.637), 0.696 by epoch 13.
+- Generalization set: 150 Redmond blocks (city "Street Lights" layer, PSE-owned poles, Eastside),
+  all-val, built and registered the same way; scoring run 1 on it now.
