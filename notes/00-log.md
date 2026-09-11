@@ -213,3 +213,19 @@ negatives in training, so it suppresses poles in parking lots and on fields, and
 they happen to resemble a distribution pole. Fix: don't-care loss masks over OSM `amenity=parking`
 and `leisure=pitch` polygons (never teach "no poles here"), plus positives for masts from FAA DOF /
 FCC ASR / OSM `man_made=mast`.
+
+### v3 (2026-09-11): masts, flagpoles, field lights; don't-care masks
+Why: v2 suppresses poles inside parking lots and on sports fields (they were unlabelled negatives) and
+fires on masts only when they resemble a distribution pole.
+- New labels: FAA Digital Obstacle File (KC: 427 TOWER, 251 POLE, 208 T-L TWR, 20 UTILITY POLE, 6
+  ANTENNA) + FCC ASR (540 masts, 246 poles in KC) → `labels/obstacles.geojson.gz` (1,713 points; only
+  13% within 10 m of an OSM mast/tower node, so the sources are complementary) + OSM man_made=mast (717),
+  power=tower (4,419), flagpole (654) → `labels/tall.geojson.gz` (7,564 points).
+- `tall_set`: 650 blocks (451 train / 199 val by cell) around those points, flagged rare with point
+  weight 2. Train labels snapped onto the v2 model's nearest response ≤15 m (score ≥0.08); unsnapped
+  ones keep their position and get a 15 m ignore disc so the real structure is never a negative.
+- Don't-care masks: OSM amenity=parking, leisure=pitch/track/stadium/sports_centre/golf_course polygons
+  (21,243 in KC) rasterized per block (`<id>_ignore.png`; 521 of 2,386 SCL blocks, 174 city blocks,
+  120 tall blocks). Focal loss drops the negative term inside them (positives still count).
+- Sampler: rare blocks drawn 4× (WeightedRandomSampler), i.e. per-block upsampling without copies.
+- Run `v3_cnxt`: ConvNeXt-Tiny, 60 epochs, same schedule as v2.
