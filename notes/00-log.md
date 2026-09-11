@@ -229,3 +229,18 @@ fires on masts only when they resemble a distribution pole.
   120 tall blocks). Focal loss drops the negative term inside them (positives still count).
 - Sampler: rare blocks drawn 4× (WeightedRandomSampler), i.e. per-block upsampling without copies.
 - Run `v3_cnxt`: ConvNeXt-Tiny, 60 epochs, same schedule as v2.
+
+#### v3 results
+Model selection on the union val was wrong: the tall-set val labels are FAA/FCC points (±10–30 m), so
+union F1 fell as the model learned masts and `best.pt` froze at epoch 7 (Seattle 0.684). The
+final-epoch weights (`last.pt`, epoch 59), per set, 7 years, thr 0.25:
+| set | F1@2 m | F1@3 m | R@15 m | v2 for comparison |
+|---|---|---|---|---|
+| Seattle | 0.724 | 0.767 | 0.83 | 0.727 / 0.776 |
+| Redmond | 0.466 | 0.515 | 0.43 | 0.589 / – |
+| Renton | 0.550 | 0.550 | 0.74 | 0.549 |
+| tall (masts/flagpoles/pylons) | 0.09 | 0.16 | **R 0.61** (P 0.19: the "FPs" are ordinary poles in those blocks) | R 0.04 @15 m |
+Probes with last.pt: Lower Woodland fields 28 peaks ≥0.5 (top 0.96) vs 18 with v2; Northgate parking lot
+still 1 ≥0.5 (top 0.60) — the ignore mask removes the penalty but adds no positives, so lot lights stay
+uncertain. Redmond dropped; suspects: 4× rare sampling starving the small city sets, or noise on 100
+labels. Rerun `v3b`: rare weight 2, 80 epochs, model selection on the precise sets only.
