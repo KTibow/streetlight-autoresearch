@@ -74,5 +74,20 @@ Years at inference matter even for the final model: Seattle F1@2 m 0.730 with 7 
 signal/light masts with coarse positions and I treat it as not-ground-truth rather than a model failure.
 Redmond's remaining misses are pedestrian/decorative lights under 20 ft and poles under evergreens.
 
+## v3: masts, flagpoles, field lights, and the "not-a-pole-here" problem
+The v2 model suppressed poles inside parking lots and on sports fields, because every unlabelled pole
+there had been a negative. Two changes: (1) don't-care loss masks from OSM `amenity=parking` and
+`leisure=pitch`-type polygons (negative term zeroed inside), (2) a rare class of tall structures from the
+FAA Digital Obstacle File + FCC Antenna Structure Registration + OSM masts/pylons/flagpoles, drawn 2–4×
+by a weighted sampler, with train labels snapped onto model responses ≤15 m and unsnapped ones wrapped
+in a 15 m ignore disc. Result (v3b): mast recall within 15 m 0.04 → 0.56, field-light masts fire at
+0.8–0.95, Seattle unchanged (0.726), Renton +0.02, Redmond −0.12 (unexplained), parking-lot lights
+still low because a mask adds no positives. Two more lessons:
+- **Select the checkpoint on precise labels only.** With ±10–30 m obstacle points in the union val,
+  F1 fell as the model improved and "best.pt" froze at epoch 7. `--select_sets` fixes this.
+- **Upsampling is not the hard part; positives are.** The weighted sampler and point weights are
+  three lines; what the rare classes lacked was any positive supervision at all, and a mask cannot
+  supply it. For parking-lot lights the honest path is a few hundred human-verified points.
+
 Cost: ≈ $8 of H100 time for everything above (7 training runs, all evaluation), ~3 h wall clock for
 data, ~2 h for training and analysis.

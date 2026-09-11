@@ -247,3 +247,20 @@ labels. Rerun `v3b`: rare weight 2, 80 epochs, model selection on the precise se
 Fields probe composite with v3 (`results/examples/probe_v3_lower_woodland_fields.jpg`): two of the four
 pitch masts ≥0.5, the other two 0.25–0.5, baseball-field masts faint; v2 gave none of them ≥0.5.
 Weights: `weights/polenet_cnxt_multiyear_v3.pt` (final epoch of v3_cnxt).
+
+#### v3b (rare weight 2, 80 epochs, best.pt selected on Seattle+city val only; best epoch 67)
+| set | F1@2 m | F1@3 m | R@15 m | v2 |
+|---|---|---|---|---|
+| Seattle | 0.726 | 0.767 | 0.83 | 0.727 / 0.776 |
+| Redmond | 0.469 | 0.494 | 0.44 | 0.589 |
+| Renton | 0.570 | 0.570 | 0.74 | 0.549 |
+| tall (masts/flagpoles/pylons) | 0.09 | 0.15 | **0.56** | 0.04 |
+Probes: fields 21 peaks ≥0.5 (top 0.94; v2: 18 but none on the masts); parking lot 0 ≥0.5 (top 0.45).
+Verdict: masts/field lights are now detected (recall 0.56–0.61 within 15 m of FAA/FCC points, which is
+the only fair radius for those labels), Seattle is unchanged, Renton slightly better, Redmond light
+standards regressed by ~0.1 F1 in both v3 runs (cause not isolated: candidates are the changed class
+prior from tall/mask supervision, or 100-label noise). Parking-lot lights are still suppressed: a
+don't-care mask removes the penalty but supplies no positives; they need a labelled source
+(none public in KC) or human-verified pseudo-labels.
+Weights: `weights/polenet_cnxt_multiyear_v3b.pt` (use this for "all tall structures"),
+`weights/polenet_cnxt_multiyear_v2.pt` (best for streetlights/utility poles in the Redmond-style suburbs).
