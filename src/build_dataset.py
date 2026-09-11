@@ -91,6 +91,7 @@ def main():
     ap.add_argument("--ignore_areas", default=None, help="labels/osm_ignore_areas.wkt.jsonl.gz: polygons rasterized to <id>_ignore.png (no negative loss inside)")
     ap.add_argument("--rare_cls", default="", help="comma list of point cls values that flag a block rare=true and get --rare_pos_weight")
     ap.add_argument("--rare_pos_weight", type=float, default=1.0)
+    ap.add_argument("--no_neighbors", action="store_true", help="do not require the 4 neighbouring coverage cells to be labelled (sparse point sets)")
     ap.add_argument("--index_name", default="index.json")
     args = ap.parse_args()
     random.seed(args.seed)
@@ -123,7 +124,8 @@ def main():
             cells[c] = cells.get(c, 0) + 1
         good = {c for c, n in cells.items() if n >= args.cover_min}
         # require the 4-neighbourhood to be labelled too (avoid edge-of-coverage blocks)
-        good = {c for c in good if all(((c[0] + dx, c[1] + dy) in good) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))}
+        if not args.no_neighbors:
+            good = {c for c in good if all(((c[0] + dx, c[1] + dy) in good) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))}
         for (cx, cy) in good:
             for j in range(args.cover_cells):
                 for i in range(args.cover_cells):
