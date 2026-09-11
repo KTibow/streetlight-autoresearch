@@ -244,3 +244,6 @@ Probes with last.pt: Lower Woodland fields 28 peaks ≥0.5 (top 0.96) vs 18 with
 still 1 ≥0.5 (top 0.60) — the ignore mask removes the penalty but adds no positives, so lot lights stay
 uncertain. Redmond dropped; suspects: 4× rare sampling starving the small city sets, or noise on 100
 labels. Rerun `v3b`: rare weight 2, 80 epochs, model selection on the precise sets only.
+Fields probe composite with v3 (`results/examples/probe_v3_lower_woodland_fields.jpg`): two of the four
+pitch masts ≥0.5, the other two 0.25–0.5, baseball-field masts faint; v2 gave none of them ≥0.5.
+Weights: `weights/polenet_cnxt_multiyear_v3.pt` (final epoch of v3_cnxt).
