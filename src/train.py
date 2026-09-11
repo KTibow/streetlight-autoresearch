@@ -191,6 +191,7 @@ def main():
     ap.add_argument("--index", default="index.json", help="index file for the TRAIN split (val always uses index.json)")
     ap.add_argument("--use_ignore", type=int, default=1, help="apply <id>_ignore.png don't-care masks to the negative loss")
     ap.add_argument("--rare_weight", type=float, default=1.0, help="sampling weight for blocks flagged rare=true (masts, flagpoles, fields...)")
+    ap.add_argument("--select_sets", default=None, help="comma list of 'set' names whose val blocks pick best.pt (others are still logged); default: all")
     args = ap.parse_args()
     torch.manual_seed(args.seed); random.seed(args.seed); np.random.seed(args.seed)
     os.makedirs(args.out, exist_ok=True)
@@ -198,6 +199,10 @@ def main():
     device = args.device
     tr = BlockDataset(args.data, "train", years, True, crop=args.crop, sigma_px=args.sigma, year_dropout=args.year_dropout, max_years=args.max_years, index=args.index)
     va = BlockDataset(args.data, "val", years, False, sigma_px=args.sigma, max_years=args.max_years)
+    if args.select_sets:
+        sel = set(args.select_sets.split(","))
+        va.items = [it for it in va.items if it.get("set", "scl") in sel]
+        print(f"model selection on {len(va.items)} val blocks from sets {sorted(sel)}", flush=True)
     if args.rare_weight != 1.0:
         w = [args.rare_weight if it.get("rare") else 1.0 for it in tr.items]
         sampler = torch.utils.data.WeightedRandomSampler(w, num_samples=len(tr), replacement=True)
