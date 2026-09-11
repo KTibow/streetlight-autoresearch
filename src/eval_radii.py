@@ -27,7 +27,7 @@ def main():
     radii = [float(r) for r in a.radii.split(",")]
     preds_all, gts_all = [], []
     with torch.no_grad():
-        for x, mask, hm, idx in dl:
+        for x, mask, hm, idx, *_ in dl:
             with torch.autocast("cuda", dtype=torch.bfloat16):
                 logits = model(x.to(a.device), mask.to(a.device)).float()
             for b in range(x.shape[0]):

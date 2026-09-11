@@ -64,6 +64,12 @@ class BlockDataset(Dataset):
             img = translate(img, sh[0], sh[1])
         return img
 
+    def load_ignore(self, it):
+        p = os.path.join(self.root, "blocks", f"{it['id']}_ignore.png")
+        if not os.path.exists(p):
+            return None
+        return np.asarray(Image.open(p).convert("L")) > 127  # full-res bool
+
     def __getitem__(self, i):
         it = self.items[i]
         avail = [y for y in self.years if y in it["years"]]
@@ -73,28 +79,41 @@ class BlockDataset(Dataset):
             random.shuffle(avail)
         avail = avail[: self.max_years]
         pts = np.array(it["points"], np.float32).reshape(-1, 2)
+        pw = np.array(it.get("point_weight", [1.0] * len(pts)), np.float32).reshape(-1)
         S = it["size"]
+        ign = self.load_ignore(it)
+        if ign is None:
+            ign = np.zeros((S, S), bool)
         if self.train:
             cx = random.randint(0, S - self.crop); cy = random.randint(0, S - self.crop)
             imgs = [self.load(it, y)[cy:cy + self.crop, cx:cx + self.crop] for y in avail]
+            ign = ign[cy:cy + self.crop, cx:cx + self.crop]
             pts = pts - np.array([cx, cy], np.float32)
-            pts = pts[(pts[:, 0] >= 0) & (pts[:, 0] < self.crop) & (pts[:, 1] >= 0) & (pts[:, 1] < self.crop)]
+            keep = (pts[:, 0] >= 0) & (pts[:, 0] < self.crop) & (pts[:, 1] >= 0) & (pts[:, 1] < self.crop)
+            pts, pw = pts[keep], pw[keep]
         else:
             imgs = [self.load(it, y) for y in avail]
         H, W = imgs[0].shape[:2]
         x = np.stack(imgs, 0)  # Y,H,W,3
         if self.train:
             k = random.randint(0, 3)
-            x = np.rot90(x, k, axes=(1, 2))
+            x = np.rot90(x, k, axes=(1, 2)); ign = np.rot90(ign, k)
             for _ in range(k):  # np.rot90 CCW: new (x,y) = (y, W-1-x)
                 pts = np.stack([pts[:, 1], W - 1 - pts[:, 0]], 1) if len(pts) else pts
                 H, W = W, H
             if random.random() < 0.5:
-                x = x[:, :, ::-1]
+                x = x[:, :, ::-1]; ign = ign[:, ::-1]
                 if len(pts):
                     pts[:, 0] = W - 1 - pts[:, 0]
-            x = np.ascontiguousarray(x)
+            x = np.ascontiguousarray(x); ign = np.ascontiguousarray(ign)
         hm = gaussian_heatmap([(p[0] / self.stride, p[1] / self.stride) for p in pts], H // self.stride, W // self.stride, self.sigma)
+        # ignore mask + per-peak positive weight at heat-map resolution
+        ign_s = ign.reshape(H // self.stride, self.stride, W // self.stride, self.stride).any(axis=(1, 3))
+        pwm = np.ones_like(hm)
+        for (p, w) in zip(pts, pw):
+            ix, iy = int(round(p[0] / self.stride)), int(round(p[1] / self.stride))
+            if 0 <= ix < pwm.shape[1] and 0 <= iy < pwm.shape[0]:
+                pwm[iy, ix] = w
         Y = len(avail)
         mask = np.zeros(self.max_years, bool); mask[:Y] = True
         if Y < self.max_years:
@@ -106,7 +125,7 @@ class BlockDataset(Dataset):
                 a = 1 + (random.random() - 0.5) * 0.4
                 b = (random.random() - 0.5) * 40
                 x[yi] = (x[yi] * a + b).clamp(0, 255)
-        return x, torch.from_numpy(mask), torch.from_numpy(hm)[None], i
+        return x, torch.from_numpy(mask), torch.from_numpy(hm)[None], i, torch.from_numpy(ign_s)[None], torch.from_numpy(pwm)[None]
 
 
 def match_points(pred, gt, thresh):
@@ -130,7 +149,7 @@ def match_points(pred, gt, thresh):
 def evaluate(model, loader, ds, device, stride, dist_px, threshes=(0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5)):
     model.eval()
     stats = {t: [0, 0, 0] for t in threshes}
-    for x, mask, hm, idx in loader:
+    for x, mask, hm, idx, _ign, _pw in loader:
         x, mask = x.to(device), mask.to(device)
         with torch.autocast(device_type="cuda" if device == "cuda" else "cpu", dtype=torch.bfloat16, enabled=(device == "cuda")):
             logits = model(x, mask)
@@ -170,6 +189,8 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--index", default="index.json", help="index file for the TRAIN split (val always uses index.json)")
+    ap.add_argument("--use_ignore", type=int, default=1, help="apply <id>_ignore.png don't-care masks to the negative loss")
+    ap.add_argument("--rare_weight", type=float, default=1.0, help="sampling weight for blocks flagged rare=true (masts, flagpoles, fields...)")
     args = ap.parse_args()
     torch.manual_seed(args.seed); random.seed(args.seed); np.random.seed(args.seed)
     os.makedirs(args.out, exist_ok=True)
@@ -177,7 +198,13 @@ def main():
     device = args.device
     tr = BlockDataset(args.data, "train", years, True, crop=args.crop, sigma_px=args.sigma, year_dropout=args.year_dropout, max_years=args.max_years, index=args.index)
     va = BlockDataset(args.data, "val", years, False, sigma_px=args.sigma, max_years=args.max_years)
-    tl = DataLoader(tr, args.bs, shuffle=True, num_workers=args.workers, drop_last=True, pin_memory=True, persistent_workers=True)
+    if args.rare_weight != 1.0:
+        w = [args.rare_weight if it.get("rare") else 1.0 for it in tr.items]
+        sampler = torch.utils.data.WeightedRandomSampler(w, num_samples=len(tr), replacement=True)
+        print(f"rare blocks: {sum(1 for it in tr.items if it.get('rare'))} of {len(tr)} (weight {args.rare_weight})", flush=True)
+        tl = DataLoader(tr, args.bs, sampler=sampler, num_workers=args.workers, drop_last=True, pin_memory=True, persistent_workers=True)
+    else:
+        tl = DataLoader(tr, args.bs, shuffle=True, num_workers=args.workers, drop_last=True, pin_memory=True, persistent_workers=True)
     vl = DataLoader(va, args.val_bs, shuffle=False, num_workers=args.workers, pin_memory=True)
     model = PoleNet(args.backbone).to(device).to(memory_format=torch.channels_last)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
@@ -188,11 +215,12 @@ def main():
     print(f"train {len(tr)} val {len(va)} steps {steps}", flush=True)
     for ep in range(args.epochs):
         model.train(); t0 = time.time(); tot = 0; n = 0
-        for x, mask, hm, _ in tl:
+        for x, mask, hm, _, ign, pw in tl:
             x, mask, hm = x.to(device, non_blocking=True), mask.to(device), hm.to(device)
+            ign, pw = ign.to(device), pw.to(device)
             with torch.autocast(device_type="cuda" if device == "cuda" else "cpu", dtype=torch.bfloat16, enabled=(device == "cuda")):
                 logits = model(x, mask)
-            loss = focal_heatmap_loss(logits.float(), hm)
+            loss = focal_heatmap_loss(logits.float(), hm, ignore=ign if args.use_ignore else None, pos_weight=pw)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0)

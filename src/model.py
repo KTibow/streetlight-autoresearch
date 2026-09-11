@@ -63,12 +63,18 @@ class PoleNet(nn.Module):
         return self.head(p)  # stride 4
 
 
-def focal_heatmap_loss(logits, target, alpha=2.0, beta=4.0):
-    """CenterNet penalty-reduced focal loss. target in [0,1], peaks == 1."""
+def focal_heatmap_loss(logits, target, alpha=2.0, beta=4.0, ignore=None, pos_weight=None):
+    """CenterNet penalty-reduced focal loss. target in [0,1], peaks == 1.
+    ignore: optional (B,1,h,w) bool - no NEGATIVE penalty there (labels known incomplete: parking
+    lots, sports fields); positives inside still count. pos_weight: optional (B,1,h,w) multiplier on
+    the positive term (e.g. >1 for rare classes)."""
     p = torch.sigmoid(logits).clamp(1e-4, 1 - 1e-4)
     pos = target.eq(1).float()
     neg = 1 - pos
-    pos_loss = -(torch.log(p) * (1 - p) ** alpha * pos).sum()
+    if ignore is not None:
+        neg = neg * (~ignore).float()
+    pw = pos if pos_weight is None else pos * pos_weight
+    pos_loss = -(torch.log(p) * (1 - p) ** alpha * pw).sum()
     neg_loss = -(torch.log(1 - p) * p ** alpha * (1 - target) ** beta * neg).sum()
     npos = pos.sum().clamp(min=1)
     return (pos_loss + neg_loss) / npos

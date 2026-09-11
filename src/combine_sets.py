@@ -39,10 +39,14 @@ for spec in a.set:
                     continue
                 L = np.vstack([L, p[:2]]); n_add += 1
             it["points"] = L.round(1).tolist()
+            pwl = list(it.get("point_weight", [])); it["point_weight"] = (pwl + [1.0] * len(L))[:len(L)]
         for y in it["years"]:
             dst = os.path.join(a.out, "blocks", f"{bid}_{y}.jpg")
             if not os.path.lexists(dst):
                 os.symlink(os.path.abspath(os.path.join(d, "blocks", f"{bid}_{y}.jpg")), dst)
+        ig = os.path.join(d, "blocks", f"{bid}_ignore.png")
+        if os.path.exists(ig) and not os.path.lexists(os.path.join(a.out, "blocks", f"{bid}_ignore.png")):
+            os.symlink(os.path.abspath(ig), os.path.join(a.out, "blocks", f"{bid}_ignore.png"))
         out.append(it)
     ntr = sum(i["split"] == "train" and i["set"] == name for i in out); nva = sum(i["split"] == "val" and i["set"] == name for i in out)
     print(f"{name}: train {ntr} val {nva} blocks, pseudo-labels added {n_add}")

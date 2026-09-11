@@ -23,7 +23,7 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     idxs = [i for i, it in enumerate(ds.items) if a.ids is None or it["id"] in a.ids.split(",")][: a.n]
     for i in idxs:
-        x, mask, hm, _ = ds[i]
+        x, mask, hm, _, *_ = ds[i]
         it = ds.items[i]
         with torch.no_grad():
             logits = model(x[None].to(a.device), mask[None].to(a.device)).float().cpu()

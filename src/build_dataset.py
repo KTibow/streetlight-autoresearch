@@ -29,6 +29,47 @@ def load_points(path):
     return pts
 
 
+def rasterize_ignore(path, recs, out, S, z):
+    """Rasterize don't-care polygons (WKT multipolygons in WGS84) into <id>_ignore.png per block."""
+    import gzip
+    from shapely import wkt as shwkt
+    from shapely.ops import transform
+    from PIL import ImageDraw
+    polys = []
+    with gzip.open(path, "rt") as f:
+        for line in f:
+            g = json.loads(line)["geometry"]["coordinates"]
+            try:
+                polys.append(shwkt.loads(g))
+            except Exception:
+                pass
+    # to z pixel space
+    def to_px(lon, lat):
+        return tiles.merc_to_pixel(*tiles.lonlat_to_merc(lon, lat), z)
+    ppolys = [transform(lambda x, y, zz=None: to_px(x, y), p) for p in polys]
+    tree = STRtree(ppolys)
+    n = 0
+    for r in recs:
+        b = box(r["px0"], r["py0"], r["px0"] + S, r["py0"] + S)
+        hits = [ppolys[i] for i in tree.query(b)]
+        hits = [h for h in hits if h.intersects(b)]
+        if not hits:
+            continue
+        im = Image.new("L", (S, S), 0); d = ImageDraw.Draw(im)
+        for h in hits:
+            geoms = h.geoms if hasattr(h, "geoms") else [h]
+            for g in geoms:
+                g = g.intersection(b)
+                for gg in (g.geoms if hasattr(g, "geoms") else [g]):
+                    if gg.is_empty or not hasattr(gg, "exterior"):
+                        continue
+                    d.polygon([(x - r["px0"], y - r["py0"]) for x, y in gg.exterior.coords], fill=255)
+                    for ring in gg.interiors:
+                        d.polygon([(x - r["px0"], y - r["py0"]) for x, y in ring.coords], fill=0)
+        im.save(os.path.join(out, "blocks", f"{r['id']}_ignore.png")); n += 1
+    print(f"ignore masks written for {n}/{len(recs)} blocks", flush=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--points", required=True)
@@ -47,6 +88,9 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--quality", type=int, default=92)
     ap.add_argument("--reverse", action="store_true", help="process blocks in reverse order (second worker process)")
+    ap.add_argument("--ignore_areas", default=None, help="labels/osm_ignore_areas.wkt.jsonl.gz: polygons rasterized to <id>_ignore.png (no negative loss inside)")
+    ap.add_argument("--rare_cls", default="", help="comma list of point cls values that flag a block rare=true and get --rare_pos_weight")
+    ap.add_argument("--rare_pos_weight", type=float, default=1.0)
     ap.add_argument("--index_name", default="index.json")
     args = ap.parse_args()
     random.seed(args.seed)
@@ -112,8 +156,12 @@ def main():
         idx = np.nonzero(m)[0]
         points = [[float(P[i, 0] - bx), float(P[i, 1] - by)] for i in idx]
         props = [ppx[i][4] for i in idx]
+        cls = [str(p.get("cls", "")) for p in props]
+        rare_set = set(c for c in args.rare_cls.split(",") if c)
         recs.append(dict(id=f"b{bx}_{by}", px0=bx, py0=by, size=S, z=args.z, points=points,
-                         cls=[p.get("cls", "") for p in props], src=[p.get("src", "") for p in props]))
+                         cls=cls, src=[p.get("src", "") for p in props],
+                         rare=any(c in rare_set for c in cls),
+                         point_weight=[args.rare_pos_weight if c in rare_set else 1.0 for c in cls]))
     withp = [r for r in recs if r["points"]]
     empty = [r for r in recs if not r["points"]]
     random.shuffle(withp); random.shuffle(empty)
@@ -130,6 +178,8 @@ def main():
     os.makedirs(os.path.join(args.out, "blocks"), exist_ok=True)
     if args.reverse:
         keep = keep[::-1]
+    if args.ignore_areas:
+        rasterize_ignore(args.ignore_areas, keep, args.out, S, args.z)
     pool = tiles.make_pool(args.workers)
     done = 0
     for r in keep:
