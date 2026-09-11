@@ -13,8 +13,14 @@ Single-year → multi-year is worth +0.09–0.14 F1; the highest-scored "false p
 public layers miss, so treat the score as a lower bound. Short (<20 ft) light standards and poles under
 evergreens are the remaining misses. GPU cost of the whole study: ≈ $7.5.
 
-Weights in `weights/`: `polenet_r34_multiyear_v1.pt` (Seattle-only, F1 0.688), `polenet_r34_multiyear_v2.pt`
-(0.711), `polenet_cnxt_multiyear_v2.pt` (0.727). All fp16 state dicts loadable by `infer.py`.
+Weights in `weights/` (all fp16 state dicts loadable by `infer.py` and `serve_heatmap.py --ckpt`):
+| file | trained on | Seattle F1@2 m | use it for |
+|---|---|---|---|
+| `polenet_cnxt_multiyear_v3b.pt` | SCL + city streetlights + FAA/FCC/OSM masts, flagpoles, pylons; parking/pitch don't-care masks | 0.726 | **all tall structures** incl. masts and field lights (mast recall 0.56 within 15 m) |
+| `polenet_cnxt_multiyear_v2.pt` | SCL + city streetlights | 0.727 | streetlights / utility poles; best on Redmond-style light standards (0.59 vs 0.47) |
+| `polenet_r34_multiyear_v2.pt` | same as above, ResNet-34 | 0.711 | 3× faster on CPU |
+| `polenet_r34_multiyear_v1.pt` | Seattle only | 0.688 | baseline |
+| `polenet_cnxt_multiyear_v3.pt` | as v3b, first run (final epoch) | 0.724 | superseded by v3b |
 
 ## Pipeline
 | step | script |

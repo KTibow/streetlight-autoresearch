@@ -348,7 +348,7 @@ GeoJSON of cached detections: <code>/peaks.geojson?bbox=lon0,lat0,lon1,lat1</cod
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--ckpt", default=os.path.join(ROOT, "weights", "polenet_cnxt_multiyear_v2.pt"))
+    ap.add_argument("--ckpt", default=os.path.join(ROOT, "weights", "polenet_cnxt_multiyear_v3b.pt"), help="v3b = all tall structures incl. masts; v2 = streetlights/utility poles only")
     ap.add_argument("--years", default="2025,2023,2021,2019", help="KC aerial years to stack (z20 exists for 2013..2025 odd years); more = better recall, slower")
     ap.add_argument("--device", default=None, help="cuda | mps | cpu (default: auto)")
     ap.add_argument("--port", type=int, default=8765)
