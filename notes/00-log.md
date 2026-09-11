@@ -201,3 +201,15 @@ them, runs the detector once, caches (memory + `~/.cache/streetlight-heatmap`), 
 the cache; heat saturates at p=0.5, rings at peaks ≥ threshold. Measured on this 4-core sandbox, 3
 years: ConvNeXt-Tiny 3.1 s/block, ResNet-34 1.1 s/block of model time; cached tiles 11 ms.
 Example composite: `results/examples/heatmap_tile_z18_wallingford_composite.png`.
+
+### Probe: label-boundary inhibition (v2 ConvNeXt, 3 years, CPU)
+`results/examples/probe_*.jpg`: magenta ≥0.5, yellow 0.25–0.5, cyan 0.1–0.25.
+- Northgate parking lot (36 peaks, top score 0.52, only 1 ≥0.5): the lot's own light standards score
+  <0.25 or nothing; only poles on the public street score high.
+- Lower Woodland playfields (37 peaks, 18 ≥0.5): the four field-lighting masts with 30 m shadows get at
+  most yellow; the residential street poles beside them get magenta.
+→ The net learned SCL's ownership boundary: private-lot and parks-department poles were unlabelled
+negatives in training, so it suppresses poles in parking lots and on fields, and masts fire only when
+they happen to resemble a distribution pole. Fix: don't-care loss masks over OSM `amenity=parking`
+and `leisure=pitch` polygons (never teach "no poles here"), plus positives for masts from FAA DOF /
+FCC ASR / OSM `man_made=mast`.
